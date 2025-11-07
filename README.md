@@ -102,10 +102,12 @@ For agent mode to work, you need:
 2. **A2A protocol communication** enabled
 3. **Environment variable** `K8S_AGENT_URL` (defaults to `http://kubernetes-agent.argo-rollouts.svc.cluster.local:8080`)
 
-The plugin will automatically fall back to default mode if:
-- Agent mode is configured but `namespace` or `podName` is missing
+**Important:** When agent mode is explicitly configured, the analysis will **fail** if:
+- `namespace` or `podName` arguments are not provided
 - Kubernetes Agent is not available or health check fails
 - A2A communication fails
+
+The plugin will **not** fall back to default mode. This ensures you know when agent mode is not working as expected.
 
 ### Extra Prompt Feature
 
@@ -281,7 +283,7 @@ If agent mode is not working, check:
 - **"Agent mode requires namespace and podName"**: Ensure both fields are provided in the AnalysisTemplate
 - **"Kubernetes Agent health check failed"**: Check if the agent is running and accessible
 - **"Failed to analyze with kubernetes-agent"**: Check agent logs and network connectivity
-- **Fallback to default mode**: The plugin automatically falls back to default mode if agent mode fails
+- **Analysis fails in agent mode**: The plugin will fail the analysis if agent mode is configured but the agent is unavailable. Check the prerequisites above.
 
 # Testing
 

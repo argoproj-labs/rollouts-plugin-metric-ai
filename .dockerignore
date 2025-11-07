@@ -1,1 +1,8 @@
 /vendor/
+# Ignore everything except Go code
+*
+!*.go
+!go.mod
+!go.sum
+!main.go
+!internal/

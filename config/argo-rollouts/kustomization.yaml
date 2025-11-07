@@ -2,7 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: quay.io/argoproj/argo-rollouts
-  newName: ghcr.io/carlossg/rollouts-plugin-metric-ai
+  newName: ghcr.io/argoproj-labs/rollouts-plugin-metric-ai
   newTag: latest
 # downloaded from https://github.com/argoproj/argo-rollouts/releases/download/v1.8.3/install.yaml
 resources:

@@ -98,17 +98,17 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, podName, stableLogs, canaryLogs 
 }
 
 // HealthCheck checks if the Kubernetes Agent is available
+// Returns nil if the agent responds (even with 404), as long as it's reachable
 func (c *A2AClient) HealthCheck() error {
-	resp, err := c.httpClient.Get(c.baseURL + "/a2a/health")
+	resp, err := c.httpClient.Get(c.baseURL + "/")
 	if err != nil {
 		return fmt.Errorf("health check failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("health check returned status %d", resp.StatusCode)
-	}
-
+	// Accept any response from the agent (even 404) as it means the service is reachable
+	// A 404 just means the health endpoint doesn't exist, but the agent is running
+	log.WithField("statusCode", resp.StatusCode).Debug("Kubernetes Agent responded to health check")
 	return nil
 }
 

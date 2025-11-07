@@ -24,7 +24,7 @@ Common targets:
 - `make test` - Run unit tests
 - `make docker-build` - Build Docker image
 - `make docker-push` - Push Docker image to registry
-- `make docker-buildx` - Build multi-platform image
+- `make docker-buildx` - Build and push multi-platform image
 - `make fmt` - Format Go code
 - `make vet` - Run Go vet
 - `make lint` - Run linter

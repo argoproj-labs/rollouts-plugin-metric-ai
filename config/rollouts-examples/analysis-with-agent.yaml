@@ -12,13 +12,12 @@ spec:
       provider:
         plugin:
           ai-metric:
-            # NEW: Use agent mode for enhanced analysis
+            # Use agent mode for enhanced analysis
+            # IMPORTANT: Agent mode will fail if the Kubernetes Agent is not available
+            # It will NOT fall back to default mode
             analysisMode: agent
             namespace: "{{args.namespace}}"
             podName: "{{args.canary-pod}}"
-            # Fallback fields for default mode
-            stablePodLabel: app=rollouts-demo,revision=stable
-            canaryPodLabel: app=rollouts-demo,revision=canary
             model: gemini-2.0-flash-exp
 ---
 apiVersion: argoproj.io/v1alpha1
