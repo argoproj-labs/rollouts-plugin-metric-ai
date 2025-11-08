@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -83,15 +84,27 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, podName, stableLogs, canaryLogs 
 		return nil, fmt.Errorf("agent returned status %d", resp.StatusCode)
 	}
 
+	// Read the response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	// Log the full JSON response
+	log.WithField("response", string(bodyBytes)).Info("Response from Kubernetes Agent")
+
 	var result A2AResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %v", err)
 	}
 
 	log.WithFields(log.Fields{
-		"promote":    result.Promote,
-		"confidence": result.Confidence,
-		"hasPR":      result.PRLink != "",
+		"promote":     result.Promote,
+		"confidence":  result.Confidence,
+		"analysis":    result.Analysis,
+		"rootCause":   result.RootCause,
+		"remediation": result.Remediation,
+		"prLink":      result.PRLink,
 	}).Info("Received analysis from Kubernetes Agent")
 
 	return &result, nil
