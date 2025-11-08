@@ -45,23 +45,26 @@ func NewA2AClient(baseURL string) *A2AClient {
 }
 
 // AnalyzeWithAgent sends analysis request to Kubernetes Agent
-func (c *A2AClient) AnalyzeWithAgent(namespace, podName, stableLogs, canaryLogs string) (*A2AResponse, error) {
+// In agent mode, send pod selectors instead of logs - let the agent fetch logs using its tools
+func (c *A2AClient) AnalyzeWithAgent(namespace, podName, stableSelector, canarySelector string) (*A2AResponse, error) {
 	log.WithFields(log.Fields{
-		"namespace": namespace,
-		"podName":   podName,
+		"namespace":      namespace,
+		"podName":        podName,
+		"stableSelector": stableSelector,
+		"canarySelector": canarySelector,
 	}).Info("Sending analysis request to Kubernetes Agent")
 
 	req := A2ARequest{
 		UserID: "argo-rollouts",
 		Prompt: fmt.Sprintf(
-			"Analyze canary deployment issue. Namespace: %s, Pod: %s. Compare stable vs canary behavior and determine if canary should be promoted.",
-			namespace, podName,
+			"Analyze canary deployment. Namespace: %s. Use your tools to fetch and compare logs from stable pods (selector: %s) vs canary pods (selector: %s). Determine if canary should be promoted.",
+			namespace, stableSelector, canarySelector,
 		),
 		Context: map[string]interface{}{
-			"namespace":  namespace,
-			"podName":    podName,
-			"stableLogs": stableLogs,
-			"canaryLogs": canaryLogs,
+			"namespace":      namespace,
+			"podName":        podName,
+			"stableSelector": stableSelector,
+			"canarySelector": canarySelector,
 		},
 	}
 

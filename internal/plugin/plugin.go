@@ -271,7 +271,7 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"model": modelName,
 		"mode":  analysisMode,
 	}).Info("Starting AI analysis")
-	analysisJSON, result, aiErr := analyzeWithMode(analysisMode, modelName, logsContext, namespace, podName, cfg.ExtraPrompt)
+	analysisJSON, result, aiErr := analyzeWithMode(analysisMode, modelName, logsContext, ns, podName, stableSelector, canarySelector, cfg.ExtraPrompt)
 	if aiErr != nil {
 		log.WithError(aiErr).Error("AI analysis failed")
 		return markMeasurementError(newMeasurement, aiErr)
