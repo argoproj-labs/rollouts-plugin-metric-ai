@@ -46,10 +46,9 @@ func NewA2AClient(baseURL string) *A2AClient {
 
 // AnalyzeWithAgent sends analysis request to Kubernetes Agent
 // In agent mode, send pod selectors instead of logs - let the agent fetch logs using its tools
-func (c *A2AClient) AnalyzeWithAgent(namespace, podName, stableSelector, canarySelector string) (*A2AResponse, error) {
+func (c *A2AClient) AnalyzeWithAgent(namespace, stableSelector, canarySelector string) (*A2AResponse, error) {
 	log.WithFields(log.Fields{
 		"namespace":      namespace,
-		"podName":        podName,
 		"stableSelector": stableSelector,
 		"canarySelector": canarySelector,
 	}).Info("Sending analysis request to Kubernetes Agent")
@@ -62,7 +61,6 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, podName, stableSelector, canaryS
 		),
 		Context: map[string]interface{}{
 			"namespace":      namespace,
-			"podName":        podName,
 			"stableSelector": stableSelector,
 			"canarySelector": canarySelector,
 		},

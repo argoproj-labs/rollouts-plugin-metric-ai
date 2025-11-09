@@ -14,16 +14,15 @@ const (
 )
 
 // analyzeWithMode analyzes logs using the specified mode
-func analyzeWithMode(mode, modelName, logsContext, namespace, podName, stableSelector, canarySelector, extraPrompt string) (string, AIAnalysisResult, error) {
+func analyzeWithMode(mode, modelName, logsContext, namespace, stableSelector, canarySelector, extraPrompt string) (string, AIAnalysisResult, error) {
 	log.WithFields(log.Fields{
 		"mode":      mode,
 		"namespace": namespace,
-		"podName":   podName,
 	}).Info("Analyzing with mode")
 
 	switch mode {
 	case AnalysisModeAgent:
-		return analyzeWithKubernetesAgent(namespace, podName, stableSelector, canarySelector)
+		return analyzeWithKubernetesAgent(namespace, stableSelector, canarySelector)
 	default:
 		params := AIAnalysisParams{
 			ModelName:   modelName,
@@ -35,7 +34,7 @@ func analyzeWithMode(mode, modelName, logsContext, namespace, podName, stableSel
 }
 
 // analyzeWithKubernetesAgent delegates analysis to the Kubernetes Agent via A2A
-func analyzeWithKubernetesAgent(namespace, podName, stableSelector, canarySelector string) (string, AIAnalysisResult, error) {
+func analyzeWithKubernetesAgent(namespace, stableSelector, canarySelector string) (string, AIAnalysisResult, error) {
 	agentURL := os.Getenv("K8S_AGENT_URL")
 	if agentURL == "" {
 		agentURL = "http://kubernetes-agent.argo-rollouts.svc.cluster.local:8080"
@@ -58,7 +57,7 @@ func analyzeWithKubernetesAgent(namespace, podName, stableSelector, canarySelect
 	}).Info("Agent mode: letting agent fetch logs using its own tools")
 
 	// Send request to agent with pod selectors (no logs)
-	resp, err := client.AnalyzeWithAgent(namespace, podName, stableSelector, canarySelector)
+	resp, err := client.AnalyzeWithAgent(namespace, stableSelector, canarySelector)
 	if err != nil {
 		log.WithError(err).Error("Failed to analyze with kubernetes-agent")
 		return "", AIAnalysisResult{}, err

@@ -110,10 +110,6 @@ type aiConfig struct {
 	GitHubURL string `json:"githubUrl,omitempty"`
 	// Analysis mode: "default" or "agent"
 	AnalysisMode string `json:"analysisMode,omitempty"`
-	// Namespace for agent mode
-	Namespace string `json:"namespace,omitempty"`
-	// Pod name for agent mode
-	PodName string `json:"podName,omitempty"`
 	// Extra prompt text to append to the AI analysis
 	ExtraPrompt string `json:"extraPrompt,omitempty"`
 }
@@ -218,60 +214,15 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		analysisMode = AnalysisModeDefault
 	}
 
-	// Get namespace and pod name for agent mode
-	namespace := cfg.Namespace
-	podName := cfg.PodName
-	if analysisMode == AnalysisModeAgent && (namespace == "" || podName == "") {
-		err := fmt.Errorf("agent mode requires namespace and podName to be configured")
-		log.WithError(err).Error("Invalid agent mode configuration")
-		return markMeasurementError(newMeasurement, err)
-	}
-
-	// If podName doesn't contain a dash, it might be a pod template hash
-	// Try to find a pod with that hash as a label
-	if analysisMode == AnalysisModeAgent && !strings.Contains(podName, "-") {
-		log.WithFields(log.Fields{
-			"namespace":   namespace,
-			"templateHash": podName,
-		}).Debug("podName appears to be a template hash, looking for matching pod")
-
-		// Get Kubernetes client
-		k8sClient, err := getKubeClient()
-		if err != nil {
-			log.WithError(err).Error("Failed to create Kubernetes client")
-			return markMeasurementError(newMeasurement, fmt.Errorf("failed to create k8s client: %w", err))
-		}
-
-		// Try to find a pod with this hash
-		pods, err := k8sClient.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("rollouts-pod-template-hash=%s", podName),
-			Limit:         1,
-		})
-		if err != nil {
-			log.WithError(err).Error("Failed to list pods by template hash")
-			return markMeasurementError(newMeasurement, fmt.Errorf("failed to find pod with template hash %s: %w", podName, err))
-		}
-		if len(pods.Items) == 0 {
-			err := fmt.Errorf("no pods found with template hash %s", podName)
-			log.WithError(err).Error("No pods found for template hash")
-			return markMeasurementError(newMeasurement, err)
-		}
-
-		// Use the first pod found
-		resolvedPodName := pods.Items[0].Name
-		log.WithFields(log.Fields{
-			"templateHash":    podName,
-			"resolvedPodName": resolvedPodName,
-		}).Info("Resolved pod template hash to pod name")
-		podName = resolvedPodName
-	}
+	// For agent mode, use the namespace from the AnalysisRun (already in 'ns' variable)
+	// Agent doesn't need podName - it fetches logs using label selectors
 
 	// Analyze with AI (mode-aware)
 	log.WithFields(log.Fields{
 		"model": modelName,
 		"mode":  analysisMode,
 	}).Info("Starting AI analysis")
-	analysisJSON, result, aiErr := analyzeWithMode(analysisMode, modelName, logsContext, ns, podName, stableSelector, canarySelector, cfg.ExtraPrompt)
+	analysisJSON, result, aiErr := analyzeWithMode(analysisMode, modelName, logsContext, ns, stableSelector, canarySelector, cfg.ExtraPrompt)
 	if aiErr != nil {
 		log.WithError(aiErr).Error("AI analysis failed")
 		return markMeasurementError(newMeasurement, aiErr)
