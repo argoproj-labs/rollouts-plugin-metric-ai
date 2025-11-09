@@ -19,9 +19,10 @@ type A2AClient struct {
 
 // A2ARequest represents a request to the Kubernetes Agent
 type A2ARequest struct {
-	UserID  string                 `json:"userId"`
-	Prompt  string                 `json:"prompt"`
-	Context map[string]interface{} `json:"context"`
+	UserID   string                 `json:"userId"`
+	Prompt   string                 `json:"prompt"`
+	Context  map[string]interface{} `json:"context"`
+	MemoryID string                 `json:"memoryId,omitempty"` // Optional: for maintaining conversation history
 }
 
 // A2AResponse represents the response from the Kubernetes Agent
@@ -53,8 +54,13 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, stableSelector, canarySelector s
 		"canarySelector": canarySelector,
 	}).Info("Sending analysis request to Kubernetes Agent")
 
+	// Use namespace as memory ID to maintain conversation history per namespace
+	// This allows the agent to remember previous analyses for the same namespace
+	memoryID := fmt.Sprintf("rollout:%s", namespace)
+
 	req := A2ARequest{
-		UserID: "argo-rollouts",
+		UserID:   "argo-rollouts",
+		MemoryID: memoryID,
 		Prompt: fmt.Sprintf(
 			"Analyze canary deployment. Namespace: %s. Use your tools to fetch and compare logs from stable pods (selector: %s) vs canary pods (selector: %s). Determine if canary should be promoted.",
 			namespace, stableSelector, canarySelector,
