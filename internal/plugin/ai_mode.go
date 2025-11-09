@@ -14,15 +14,16 @@ const (
 )
 
 // analyzeWithMode analyzes logs using the specified mode
-func analyzeWithMode(mode, modelName, logsContext, namespace, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
+func analyzeWithMode(mode, modelName, logsContext, namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
 	log.WithFields(log.Fields{
-		"mode":      mode,
-		"namespace": namespace,
+		"mode":        mode,
+		"namespace":   namespace,
+		"rolloutName": rolloutName,
 	}).Info("Analyzing with mode")
 
 	switch mode {
 	case AnalysisModeAgent:
-		return analyzeWithKubernetesAgent(namespace, stableSelector, canarySelector, agentURL)
+		return analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL)
 	default:
 		params := AIAnalysisParams{
 			ModelName:   modelName,
@@ -34,7 +35,7 @@ func analyzeWithMode(mode, modelName, logsContext, namespace, stableSelector, ca
 }
 
 // analyzeWithKubernetesAgent delegates analysis to the Kubernetes Agent via A2A
-func analyzeWithKubernetesAgent(namespace, stableSelector, canarySelector, agentURL string) (string, AIAnalysisResult, error) {
+func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL string) (string, AIAnalysisResult, error) {
 	// Agent URL must be explicitly configured in the AnalysisTemplate
 	if agentURL == "" {
 		return "", AIAnalysisResult{}, fmt.Errorf("agent mode requires agentUrl to be configured in the AnalysisTemplate")
@@ -52,12 +53,13 @@ func analyzeWithKubernetesAgent(namespace, stableSelector, canarySelector, agent
 
 	// In agent mode, don't send logs - let the agent fetch them using its tools
 	log.WithFields(log.Fields{
+		"rolloutName":    rolloutName,
 		"stableSelector": stableSelector,
 		"canarySelector": canarySelector,
 	}).Info("Agent mode: letting agent fetch logs using its own tools")
 
 	// Send request to agent with pod selectors (no logs)
-	resp, err := client.AnalyzeWithAgent(namespace, stableSelector, canarySelector)
+	resp, err := client.AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector)
 	if err != nil {
 		log.WithError(err).Error("Failed to analyze with kubernetes-agent")
 		return "", AIAnalysisResult{}, err

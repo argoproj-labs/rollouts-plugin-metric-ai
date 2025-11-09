@@ -98,6 +98,22 @@ type RpcPlugin struct {
 	LogCtx log.Entry
 }
 
+// extractRolloutNameFromOwnerRefs attempts to extract the rollout name from AnalysisRun's owner references
+func extractRolloutNameFromOwnerRefs(analysisRun *v1alpha1.AnalysisRun) string {
+	if analysisRun == nil || analysisRun.OwnerReferences == nil {
+		return ""
+	}
+
+	// Look for a Rollout owner reference
+	for _, owner := range analysisRun.OwnerReferences {
+		if owner.Kind == "Rollout" {
+			return owner.Name
+		}
+	}
+
+	return ""
+}
+
 type aiConfig struct {
 	// optional explicit model
 	Model string `json:"model,omitempty"`
@@ -219,12 +235,20 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 	// For agent mode, use the namespace from the AnalysisRun (already in 'ns' variable)
 	// Agent doesn't need podName - it fetches logs using label selectors
 
+	// Extract rollout name from analysisRun (use analysisRun name as rollout identifier)
+	// The analysisRun name typically includes the rollout name or is unique per rollout
+	rolloutName := analysisRun.Name
+	if ownerName := extractRolloutNameFromOwnerRefs(analysisRun); ownerName != "" {
+		rolloutName = ownerName
+	}
+
 	// Analyze with AI (mode-aware)
 	log.WithFields(log.Fields{
-		"model": modelName,
-		"mode":  analysisMode,
+		"model":       modelName,
+		"mode":        analysisMode,
+		"rolloutName": rolloutName,
 	}).Info("Starting AI analysis")
-	analysisJSON, result, aiErr := analyzeWithMode(analysisMode, modelName, logsContext, ns, stableSelector, canarySelector, cfg.AgentURL, cfg.ExtraPrompt)
+	analysisJSON, result, aiErr := analyzeWithMode(analysisMode, modelName, logsContext, ns, rolloutName, stableSelector, canarySelector, cfg.AgentURL, cfg.ExtraPrompt)
 	if aiErr != nil {
 		log.WithError(aiErr).Error("AI analysis failed")
 		return markMeasurementError(newMeasurement, aiErr)
