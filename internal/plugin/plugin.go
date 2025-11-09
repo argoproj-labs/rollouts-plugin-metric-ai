@@ -110,6 +110,8 @@ type aiConfig struct {
 	GitHubURL string `json:"githubUrl,omitempty"`
 	// Analysis mode: "default" or "agent"
 	AnalysisMode string `json:"analysisMode,omitempty"`
+	// Agent URL for agent mode (optional, defaults to kubernetes-agent service)
+	AgentURL string `json:"agentUrl,omitempty"`
 	// Extra prompt text to append to the AI analysis
 	ExtraPrompt string `json:"extraPrompt,omitempty"`
 }
@@ -222,7 +224,7 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"model": modelName,
 		"mode":  analysisMode,
 	}).Info("Starting AI analysis")
-	analysisJSON, result, aiErr := analyzeWithMode(analysisMode, modelName, logsContext, ns, stableSelector, canarySelector, cfg.ExtraPrompt)
+	analysisJSON, result, aiErr := analyzeWithMode(analysisMode, modelName, logsContext, ns, stableSelector, canarySelector, cfg.AgentURL, cfg.ExtraPrompt)
 	if aiErr != nil {
 		log.WithError(aiErr).Error("AI analysis failed")
 		return markMeasurementError(newMeasurement, aiErr)

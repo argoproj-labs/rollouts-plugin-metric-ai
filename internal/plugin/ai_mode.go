@@ -2,7 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
-	"os"
+	"fmt"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -14,7 +14,7 @@ const (
 )
 
 // analyzeWithMode analyzes logs using the specified mode
-func analyzeWithMode(mode, modelName, logsContext, namespace, stableSelector, canarySelector, extraPrompt string) (string, AIAnalysisResult, error) {
+func analyzeWithMode(mode, modelName, logsContext, namespace, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
 	log.WithFields(log.Fields{
 		"mode":      mode,
 		"namespace": namespace,
@@ -22,7 +22,7 @@ func analyzeWithMode(mode, modelName, logsContext, namespace, stableSelector, ca
 
 	switch mode {
 	case AnalysisModeAgent:
-		return analyzeWithKubernetesAgent(namespace, stableSelector, canarySelector)
+		return analyzeWithKubernetesAgent(namespace, stableSelector, canarySelector, agentURL)
 	default:
 		params := AIAnalysisParams{
 			ModelName:   modelName,
@@ -34,10 +34,10 @@ func analyzeWithMode(mode, modelName, logsContext, namespace, stableSelector, ca
 }
 
 // analyzeWithKubernetesAgent delegates analysis to the Kubernetes Agent via A2A
-func analyzeWithKubernetesAgent(namespace, stableSelector, canarySelector string) (string, AIAnalysisResult, error) {
-	agentURL := os.Getenv("K8S_AGENT_URL")
+func analyzeWithKubernetesAgent(namespace, stableSelector, canarySelector, agentURL string) (string, AIAnalysisResult, error) {
+	// Agent URL must be explicitly configured in the AnalysisTemplate
 	if agentURL == "" {
-		agentURL = "http://kubernetes-agent.argo-rollouts.svc.cluster.local:8080"
+		return "", AIAnalysisResult{}, fmt.Errorf("agent mode requires agentUrl to be configured in the AnalysisTemplate")
 	}
 
 	log.WithField("agentURL", agentURL).Info("Using Kubernetes Agent for analysis")
