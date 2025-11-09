@@ -3,7 +3,8 @@
 Standalone Argo Rollouts Metric Provider plugin written in Go. It:
 - Collects stable/canary pod logs in the Rollout namespace
 - Uses Gemini (Google Generative AI) to analyze logs and decide promote/fail
-- On failure, uses GitHub API to open a PR with AI-proposed fixes (or a proposal file)
+- Supports two analysis modes: **Default** (direct AI) and **Agent** (autonomous Kubernetes agent)
+- On failure, creates GitHub issues with AI-generated analysis (both modes)
 
 Configuration snippet in argo-rollouts-config ConfigMap:
 
@@ -31,8 +32,10 @@ spec:
       provider:
         plugin:
           argoproj-labs/metric-ai:
-            model: gemini-2.0-flash-exp
-            baseBranch: main
+            analysisMode: default
+            model: gemini-2.0-flash
+            stableLabel: role=stable
+            canaryLabel: role=canary
             githubUrl: https://github.com/carlossg/rollouts-demo
 ```
 
@@ -55,16 +58,20 @@ spec:
         plugin:
           argoproj-labs/metric-ai:
             analysisMode: default
-            model: gemini-2.0-flash-exp
-            stablePodLabel: app=rollouts-demo,revision=stable
-            canaryPodLabel: app=rollouts-demo,revision=canary
-            baseBranch: main
+            model: gemini-2.0-flash
+            stableLabel: role=stable
+            canaryLabel: role=canary
+            # Optional: Create GitHub issues on failures
             githubUrl: https://github.com/carlossg/rollouts-demo
+            baseBranch: main
             extraPrompt: "Pay special attention to database connection errors and memory usage patterns."
 ```
 
 ### Agent Mode (Kubernetes Agent via A2A)
-Delegates analysis to a Kubernetes Agent using the A2A protocol for enhanced analysis.
+Delegates analysis to an autonomous Kubernetes Agent using the A2A protocol. The agent:
+- **Autonomously fetches logs** using its own Kubernetes tools
+- **Analyzes with structured output** (guaranteed JSON response)
+- **Uses Gemini model** configured via `GEMINI_MODEL` environment variable
 
 An example agent is available at [carlossg/kubernetes-agent](https://github.com/carlossg/kubernetes-agent)
 
@@ -74,25 +81,27 @@ kind: AnalysisTemplate
 metadata:
   name: canary-analysis-agent
 spec:
-  args:
-    - name: namespace
-    - name: canary-pod
   metrics:
     - name: ai-analysis
       provider:
         plugin:
           argoproj-labs/metric-ai:
+            # Agent mode configuration
             analysisMode: agent
-            namespace: "{{args.namespace}}"
-            podName: "{{args.canary-pod}}"
-            # Fallback fields for default mode
-            stablePodLabel: app=rollouts-demo,revision=stable
-            canaryPodLabel: app=rollouts-demo,revision=canary
-            model: gemini-2.0-flash-exp
-            baseBranch: main
-            githubUrl: https://github.com/carlossg/rollouts-demo
-            extraPrompt: "Focus on error rates and response times. Consider this a critical production deployment."
+            # Required: Agent URL (no default, must be explicitly configured)
+            agentUrl: http://kubernetes-agent.argo-rollouts.svc.cluster.local:8080
+            # Required: Pod selectors for agent to fetch logs
+            stableLabel: role=stable
+            canaryLabel: role=canary
+            # Optional: Create GitHub issues on failures (works in agent mode too)
+            # githubUrl: https://github.com/carlossg/rollouts-demo
+            # baseBranch: main
 ```
+
+**Key differences from default mode:**
+- ✅ **No model config needed** - Agent uses its own model
+- ✅ **Structured outputs** - Agent returns guaranteed JSON format
+- ✅ **Agent fetches logs** - Uses Kubernetes tools autonomously
 
 ### Agent Mode Prerequisites
 
@@ -100,10 +109,10 @@ For agent mode to work, you need:
 
 1. **Kubernetes Agent deployed** in the cluster
 2. **A2A protocol communication** enabled
-3. **Environment variable** `K8S_AGENT_URL` (defaults to `http://kubernetes-agent.argo-rollouts.svc.cluster.local:8080`)
+3. **Agent URL** configured in the AnalysisTemplate (required, no default)
 
-**Important:** When agent mode is explicitly configured, the analysis will **fail** if:
-- `namespace` or `podName` arguments are not provided
+**Important:** When agent mode is configured, the analysis will **fail** if:
+- `agentUrl` is not provided in the configuration
 - Kubernetes Agent is not available or health check fails
 - A2A communication fails
 
@@ -130,25 +139,33 @@ extraPrompt: "This is a high-traffic e-commerce service. Focus on error rates, r
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `model` | string | Yes | Gemini model to use (e.g., `gemini-2.0-flash-exp`) |
 | `analysisMode` | string | No | Analysis mode: `default` or `agent` (default: `default`) |
-| `stablePodLabel` | string | Yes* | Label selector for stable pods (*required for default mode) |
-| `canaryPodLabel` | string | Yes* | Label selector for canary pods (*required for default mode) |
-| `namespace` | string | Yes* | Namespace for agent mode (*required for agent mode) |
-| `podName` | string | Yes* | Pod name for agent mode (*required for agent mode) |
-| `baseBranch` | string | No | Git base branch for PR creation |
-| `githubUrl` | string | No | GitHub repository URL for issue/PR creation |
-| `extraPrompt` | string | No | Additional context text to append to the AI analysis prompt |
+| `model` | string | Yes* | Gemini model to use (*required for default mode only) |
+| `stableLabel` | string | Yes | Label selector for stable pods (e.g., `role=stable`) |
+| `canaryLabel` | string | Yes | Label selector for canary pods (e.g., `role=canary`) |
+| `agentUrl` | string | Yes* | Agent URL (*required for agent mode, no default) |
+| `githubUrl` | string | No | GitHub repository URL for issue creation (works in both modes) |
+| `baseBranch` | string | No | Git base branch for issue creation |
+| `extraPrompt` | string | No | Additional context text for AI analysis (default mode only) |
+
+**Notes:**
+- **Default mode**: Requires `model`, `stableLabel`, `canaryLabel`
+- **Agent mode**: Requires `agentUrl`, `stableLabel`, `canaryLabel`
+- **GitHub integration**: Optional in both modes, creates issues on failure
+- **No args needed**: Agent mode auto-detects namespace from AnalysisRun
 
 ### Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GOOGLE_API_KEY` | Yes | Google API key for Gemini AI |
-| `GITHUB_TOKEN` | No | GitHub token for issue/PR creation |
-| `AUTO_PR_ENABLED` | No | Enable automatic PR creation (`true`/`false`) |
-| `K8S_AGENT_URL` | No | Kubernetes Agent URL (default: `http://kubernetes-agent.argo-rollouts.svc.cluster.local:8080`) |
+| `GOOGLE_API_KEY` | Yes | Google API key for Gemini AI (required for default mode) |
+| `GITHUB_TOKEN` | No | GitHub token for issue creation (optional, used in both modes) |
 | `LOG_LEVEL` | No | Log level (`panic`, `fatal`, `error`, `warn`, `info`, `debug`, `trace`). Default: `info` |
+
+**Agent Mode Notes:**
+- Agent has its own `GEMINI_MODEL` environment variable
+- Agent requires `GOOGLE_API_KEY` and optionally `GITHUB_TOKEN` (for PR creation)
+- Plugin only needs `GITHUB_TOKEN` if creating issues from the plugin side
 
 ## Building
 
@@ -258,32 +275,36 @@ When `LOG_LEVEL=debug` or `LOG_LEVEL=trace`, the plugin will log:
 
 If agent mode is not working, check:
 
-1. **Kubernetes Agent is deployed:**
+1. **Agent URL is configured:**
+   ```bash
+   # Check AnalysisTemplate configuration
+   kubectl get analysistemplate -n <namespace> <template-name> -o yaml | grep agentUrl
+   ```
+
+2. **Kubernetes Agent is deployed and running:**
    ```bash
    kubectl get pods -n argo-rollouts | grep kubernetes-agent
+   kubectl logs -n argo-rollouts deployment/kubernetes-agent
    ```
 
-2. **Agent health check:**
+3. **Agent health check:**
    ```bash
-   kubectl logs -n argo-rollouts deployment/argo-rollouts | grep "agent"
+   # From within cluster
+   curl http://kubernetes-agent.argo-rollouts.svc.cluster.local:8080/a2a/health
    ```
 
-3. **A2A communication:**
+4. **Plugin logs for agent communication:**
    ```bash
-   kubectl logs -n argo-rollouts deployment/argo-rollouts | grep "A2A\|agent"
-   ```
-
-4. **Environment variable:**
-   ```bash
-   kubectl get deployment argo-rollouts -n argo-rollouts -o yaml | grep K8S_AGENT_URL
+   kubectl logs -n argo-rollouts deployment/argo-rollouts | grep -E "agent|A2A|Attempting to create"
    ```
 
 ### Common Issues
 
-- **"Agent mode requires namespace and podName"**: Ensure both fields are provided in the AnalysisTemplate
-- **"Kubernetes Agent health check failed"**: Check if the agent is running and accessible
+- **"agent mode requires agentUrl to be configured"**: Add `agentUrl` field to your AnalysisTemplate
+- **"Kubernetes Agent health check failed"**: Verify agent is running and accessible at the configured URL
 - **"Failed to analyze with kubernetes-agent"**: Check agent logs and network connectivity
-- **Analysis fails in agent mode**: The plugin will fail the analysis if agent mode is configured but the agent is unavailable. Check the prerequisites above.
+- **GitHub issue creation skipped**: Check logs for "Skipping GitHub issue creation (githubUrl not configured)"
+- **Namespace auto-detection**: Agent automatically uses the namespace from the AnalysisRun, no manual config needed
 
 # Testing
 
