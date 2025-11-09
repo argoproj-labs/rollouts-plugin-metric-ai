@@ -254,11 +254,18 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		// Failure: canary has issues
 		newMeasurement.Value = "0"
 		newMeasurement.Phase = v1alpha1.AnalysisPhaseFailed
-		log.Info("Canary promotion not recommended, attempting to create GitHub issue")
+		log.Info("Canary promotion not recommended")
 
-		// Create GitHub issue on failure
-		if issueErr := createCanaryFailureIssue(logsContext, result.Text, cfg.BaseBranch, cfg.GitHubURL, modelName); issueErr != nil {
-			log.WithError(issueErr).Warn("Failed to create GitHub issue")
+		// Create GitHub issue on failure (both default and agent modes)
+		if cfg.GitHubURL != "" {
+			log.WithField("githubUrl", cfg.GitHubURL).Info("Attempting to create GitHub issue for canary failure")
+			if issueErr := createCanaryFailureIssue(logsContext, result.Text, cfg.BaseBranch, cfg.GitHubURL, modelName); issueErr != nil {
+				log.WithError(issueErr).Warn("Failed to create GitHub issue")
+			} else {
+				log.Info("Successfully created GitHub issue for canary failure")
+			}
+		} else {
+			log.Info("Skipping GitHub issue creation (githubUrl not configured)")
 		}
 	}
 
