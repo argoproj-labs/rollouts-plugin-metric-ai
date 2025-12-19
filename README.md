@@ -96,6 +96,8 @@ spec:
             # Optional: Create GitHub issues on failures (works in agent mode too)
             # githubUrl: https://github.com/carlossg/rollouts-demo
             # baseBranch: main
+            # Optional: Additional context for AI analysis (works in agent mode)
+            # extraPrompt: "Ignore color changes. Consider LoadBalancerNegNotReady a temporary condition."
 ```
 
 **Key differences from default mode:**
@@ -122,6 +124,10 @@ The plugin will **not** fall back to default mode. This ensures you know when ag
 
 The `extraPrompt` parameter allows you to provide additional context to the AI analysis. This text is appended to the standard analysis prompt, giving you fine-grained control over what the AI should focus on.
 
+**Works in both modes:**
+- **Default mode**: Appended to the Gemini prompt before log analysis
+- **Agent mode**: Passed to the Kubernetes Agent and included in the agent's analysis prompt
+
 **Use cases:**
 - **Performance focus**: "Focus on response times and throughput metrics"
 - **Error analysis**: "Pay special attention to error rates and exception patterns"
@@ -146,7 +152,7 @@ extraPrompt: "This is a high-traffic e-commerce service. Focus on error rates, r
 | `agentUrl` | string | Yes* | Agent URL (*required for agent mode, no default) |
 | `githubUrl` | string | No | GitHub repository URL for issue creation (works in both modes) |
 | `baseBranch` | string | No | Git base branch for issue creation |
-| `extraPrompt` | string | No | Additional context text for AI analysis (default mode only) |
+| `extraPrompt` | string | No | Additional context text for AI analysis (works in both modes) |
 
 **Notes:**
 - **Default mode**: Requires `model`, `stableLabel`, `canaryLabel`

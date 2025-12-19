@@ -47,31 +47,45 @@ func NewA2AClient(baseURL string) *A2AClient {
 
 // AnalyzeWithAgent sends analysis request to Kubernetes Agent
 // In agent mode, send pod selectors instead of logs - let the agent fetch logs using its tools
-func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector string) (*A2AResponse, error) {
+func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt string) (*A2AResponse, error) {
 	log.WithFields(log.Fields{
 		"namespace":      namespace,
 		"rolloutName":    rolloutName,
 		"stableSelector": stableSelector,
 		"canarySelector": canarySelector,
+		"extraPrompt":    extraPrompt != "",
 	}).Info("Sending analysis request to Kubernetes Agent")
 
 	// Use rollout name as memory ID to maintain conversation history per rollout
 	// This allows the agent to remember previous analyses for the same rollout across multiple analysis runs
 	memoryID := fmt.Sprintf("rollout:%s/%s", namespace, rolloutName)
 
+	// Build the base prompt
+	prompt := fmt.Sprintf(
+		"Analyze canary deployment for rollout '%s'. Namespace: %s. Use your tools to fetch and compare logs from stable pods (selector: %s) vs canary pods (selector: %s). Determine if canary should be promoted.",
+		rolloutName, namespace, stableSelector, canarySelector,
+	)
+
+	// Append extra prompt if provided
+	if extraPrompt != "" {
+		prompt += fmt.Sprintf("\n\nAdditional context: %s", extraPrompt)
+	}
+
 	req := A2ARequest{
 		UserID:   "argo-rollouts",
 		MemoryID: memoryID,
-		Prompt: fmt.Sprintf(
-			"Analyze canary deployment for rollout '%s'. Namespace: %s. Use your tools to fetch and compare logs from stable pods (selector: %s) vs canary pods (selector: %s). Determine if canary should be promoted.",
-			rolloutName, namespace, stableSelector, canarySelector,
-		),
+		Prompt:   prompt,
 		Context: map[string]interface{}{
 			"namespace":      namespace,
 			"rolloutName":    rolloutName,
 			"stableSelector": stableSelector,
 			"canarySelector": canarySelector,
 		},
+	}
+
+	// Include extraPrompt in context for potential use by the agent
+	if extraPrompt != "" {
+		req.Context["extraPrompt"] = extraPrompt
 	}
 
 	body, err := json.Marshal(req)
