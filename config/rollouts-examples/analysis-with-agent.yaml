@@ -6,35 +6,13 @@ metadata:
 spec:
   args:
     - name: namespace
-    - name: canary-pod
   metrics:
-    - name: ai-analysis-agent-mode
+    - name: ai-analysis
       provider:
         plugin:
-          ai-metric:
-            # Use agent mode for enhanced analysis
-            # IMPORTANT: Agent mode will fail if the Kubernetes Agent is not available
-            # It will NOT fall back to default mode
-            analysisMode: agent
+          argoproj-labs/metric-ai:
+            # Agent URL is required - all analysis is delegated to the A2A agent
+            agentUrl: http://kubernetes-agent:8080
             namespace: "{{args.namespace}}"
-            podName: "{{args.canary-pod}}"
-            model: gemini-2.0-flash-exp
----
-apiVersion: argoproj.io/v1alpha1
-kind: AnalysisTemplate
-metadata:
-  name: canary-analysis-default-mode
-  namespace: rollouts-test-system
-spec:
-  metrics:
-    - name: ai-analysis-default-mode
-      provider:
-        plugin:
-          ai-metric:
-            # Use default mode (current implementation)
-            analysisMode: default
-            stablePodLabel: app=rollouts-demo,revision=stable
-            canaryPodLabel: app=rollouts-demo,revision=canary
-            model: gemini-2.0-flash-exp
-
-
+            stableLabel: app=rollouts-demo,revision=stable
+            canaryLabel: app=rollouts-demo,revision=canary

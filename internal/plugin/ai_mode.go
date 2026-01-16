@@ -7,31 +7,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Analysis mode constants
-const (
-	AnalysisModeDefault = "default" // Current implementation
-	AnalysisModeAgent   = "agent"   // Delegate to kubernetes-agent
-)
-
-// analyzeWithMode analyzes logs using the specified mode
-func analyzeWithMode(mode, modelName, logsContext, namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
+// analyzeWithAgent delegates all analysis to the Kubernetes Agent via A2A
+// This is now the only analysis method - no direct LLM calls
+// Declared as a variable to allow test stubbing
+var analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
 	log.WithFields(log.Fields{
-		"mode":        mode,
 		"namespace":   namespace,
 		"rolloutName": rolloutName,
-	}).Info("Analyzing with mode")
+	}).Info("Delegating analysis to Kubernetes Agent")
 
-	switch mode {
-	case AnalysisModeAgent:
-		return analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt)
-	default:
-		params := AIAnalysisParams{
-			ModelName:   modelName,
-			LogsContext: logsContext,
-			ExtraPrompt: extraPrompt,
-		}
-		return analyzeLogsWithAI(params)
-	}
+	return analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt)
 }
 
 // analyzeWithKubernetesAgent delegates analysis to the Kubernetes Agent via A2A

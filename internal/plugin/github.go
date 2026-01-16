@@ -2,117 +2,32 @@ package plugin
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/google/go-github/v60/github"
 	log "github.com/sirupsen/logrus"
-	"google.golang.org/genai"
 )
 
 // createCanaryFailureIssue creates a GitHub issue for canary failures
-func createCanaryFailureIssue(logsBlob, analysisText, baseBranch, githubURL, modelName string) error {
+// Note: Issue content generation is now delegated to the A2A agent
+func createCanaryFailureIssue(logsBlob, analysisText, baseBranch, githubURL string) error {
 	owner, repo, parseErr := extractOwnerRepoFromURL(githubURL)
 	if parseErr != nil {
 		return fmt.Errorf("failed to extract owner/repo from URL: %v", parseErr)
 	}
 
-	// Try to generate issue content with AI (with retries)
-	var issueTitle, issueBody string
-	var err error
-	maxRetries := 3
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		issueTitle, issueBody, err = generateIssueContent(logsBlob, analysisText, baseBranch, modelName)
-		if err == nil && issueTitle != "" {
-			log.WithField("attempt", attempt).Info("Successfully generated issue content with AI")
-			break
-		}
-		if attempt < maxRetries {
-			if err != nil {
-				log.WithFields(log.Fields{
-					"attempt": attempt,
-					"error":   err,
-				}).Warning("Failed to generate issue content with AI, retrying...")
-			} else {
-				log.WithField("attempt", attempt).Warning("AI generated empty issue title, retrying...")
-			}
-		}
-	}
-
-	// Fall back to default if all retries failed
-	if err != nil || issueTitle == "" {
-		if err != nil {
-			log.WithError(err).Warning("Failed to generate issue content with AI after retries, using fallback")
-		} else {
-			log.Warning("AI generated empty issue title after retries, using fallback")
-		}
-		issueTitle = "🚨 Canary Deployment Failed - AI Analysis Required"
-		issueBody = generateFallbackIssueBody(logsBlob, analysisText)
-	}
+	// Use simple, descriptive issue content
+	// The A2A agent should have already created detailed analysis
+	issueTitle := "🚨 Canary Deployment Failed - AI Analysis"
+	issueBody := generateIssueBody(logsBlob, analysisText)
 
 	// Create issue using GitHub API with token from Kubernetes secret
 	return createGitHubIssue(owner, repo, issueTitle, issueBody)
 }
 
-// generateIssueContent generates GitHub issue content using AI
-func generateIssueContent(logsBlob, analysisText, baseBranch, modelName string) (string, string, error) {
-	apiKey, err := getSecretValue("argo-rollouts", "google_api_key")
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get Google API key from secret: %v", err)
-	}
-	ctx := context.Background()
-
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
-	})
-	if err != nil {
-		return "", "", err
-	}
-
-	system := "You are an expert DevOps engineer. Based on the canary failure analysis, create a GitHub issue title and body. " +
-		"Return STRICT JSON with these fields: " +
-		"{\"title\": \"concise, actionable title\", \"body\": \"detailed markdown body with sections for problem, analysis, and recommended actions\"}. " +
-		"The title should be under 100 characters and start with an appropriate emoji. " +
-		"The body should be well-formatted markdown with clear sections."
-
-	prompt := system + "\n\nCANARY FAILURE ANALYSIS:\n" + analysisText + "\n\nLOGS CONTEXT:\n" + logsBlob
-
-	parts := []*genai.Part{
-		{Text: prompt},
-	}
-
-	var resp *genai.GenerateContentResponse
-	err = retryWithBackoff(ctx, func() error {
-		var apiErr error
-		resp, apiErr = client.Models.GenerateContent(ctx, modelName, []*genai.Content{{Parts: parts}}, nil)
-		return apiErr
-	}, 3) // Max 3 retries
-	if err != nil {
-		return "", "", err
-	}
-
-	responseText := concatCandidates(resp)
-
-	var result struct {
-		Title string `json:"title"`
-		Body  string `json:"body"`
-	}
-
-	if err := json.Unmarshal([]byte(responseText), &result); err != nil {
-		// Try to extract JSON if the response has extra text
-		if j := extractFirstJSON(responseText); j != "" {
-			responseText = j
-			_ = json.Unmarshal([]byte(responseText), &result)
-		}
-	}
-
-	return result.Title, result.Body, nil
-}
-
-// generateFallbackIssueBody generates a fallback issue body when AI generation fails
-func generateFallbackIssueBody(logsBlob, analysisText string) string {
+// generateIssueBody generates a GitHub issue body
+func generateIssueBody(logsBlob, analysisText string) string {
 	return fmt.Sprintf(`## 🚨 Canary Deployment Failure
 
 ### Analysis

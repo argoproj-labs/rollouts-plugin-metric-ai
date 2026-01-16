@@ -39,33 +39,12 @@ const ProviderType = "MetricAI"
 
 // Configuration loaded at startup
 var (
-	googleAPIKey       string
-	googleCloudProject string
-	githubToken        string
+	githubToken string
 )
 
 // loadConfigFromFiles reads configuration from mounted secret files
 func loadConfigFromFiles() error {
 	secretsDir := "/etc/secrets"
-
-	// Read Google API Key
-	apiKeyFile := filepath.Join(secretsDir, "google_api_key")
-	if data, err := os.ReadFile(apiKeyFile); err != nil {
-		return fmt.Errorf("failed to read Google API key from %s: %v", apiKeyFile, err)
-	} else {
-		googleAPIKey = strings.TrimSpace(string(data))
-		if googleAPIKey == "" {
-			return fmt.Errorf("google API key is empty in %s", apiKeyFile)
-		}
-	}
-
-	// Read Google Cloud Project (optional)
-	projectFile := filepath.Join(secretsDir, "google_cloud_project")
-	if data, err := os.ReadFile(projectFile); err != nil {
-		log.Warnf("Google Cloud Project not found in %s: %v", projectFile, err)
-	} else {
-		googleCloudProject = strings.TrimSpace(string(data))
-	}
 
 	// Read GitHub Token
 	tokenFile := filepath.Join(secretsDir, "github_token")
@@ -84,9 +63,6 @@ func loadConfigFromFiles() error {
 
 // validateConfig validates that all required configuration is present
 func validateConfig() error {
-	if googleAPIKey == "" {
-		return fmt.Errorf("google API key is required but not configured")
-	}
 	if githubToken == "" {
 		return fmt.Errorf("github token is required but not configured")
 	}
@@ -115,8 +91,6 @@ func extractRolloutNameFromOwnerRefs(analysisRun *v1alpha1.AnalysisRun) string {
 }
 
 type aiConfig struct {
-	// optional explicit model
-	Model string `json:"model,omitempty"`
 	// optional: namespace label selectors for stable/canary pods
 	StableLabel string `json:"stableLabel,omitempty"`
 	CanaryLabel string `json:"canaryLabel,omitempty"`
@@ -124,10 +98,8 @@ type aiConfig struct {
 	BaseBranch string `json:"baseBranch,omitempty"`
 	// GitHub repository URL
 	GitHubURL string `json:"githubUrl,omitempty"`
-	// Analysis mode: "default" or "agent"
-	AnalysisMode string `json:"analysisMode,omitempty"`
-	// Agent URL for agent mode (optional, defaults to kubernetes-agent service)
-	AgentURL string `json:"agentUrl,omitempty"`
+	// Agent URL for A2A agent (required)
+	AgentURL string `json:"agentUrl"`
 	// Extra prompt text to append to the AI analysis
 	ExtraPrompt string `json:"extraPrompt,omitempty"`
 }
@@ -179,15 +151,17 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 	if canarySelector == "" {
 		canarySelector = "role=canary"
 	}
-	modelName := cfg.Model
-	if modelName == "" {
-		modelName = "gemini-2.0-flash"
+
+	// Validate that agentURL is configured
+	if cfg.AgentURL == "" {
+		log.Error("AgentURL is required but not configured in the AnalysisTemplate")
+		return markMeasurementError(newMeasurement, fmt.Errorf("agentUrl is required in plugin configuration"))
 	}
 
 	log.WithFields(log.Fields{
 		"stableSelector": stableSelector,
 		"canarySelector": canarySelector,
-		"model":          modelName,
+		"agentURL":       cfg.AgentURL,
 	}).Info("Fetching pod logs for analysis")
 
 	// Get Kubernetes client
@@ -224,16 +198,8 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"canaryLogsLength": len(canaryLogs),
 	}).Info("Successfully fetched pod logs")
 
+	// Combine logs for potential GitHub issue creation
 	logsContext := "--- STABLE LOGS ---\n" + stableLogs + "\n\n--- CANARY LOGS ---\n" + canaryLogs
-
-	// Get analysis mode (default or agent)
-	analysisMode := cfg.AnalysisMode
-	if analysisMode == "" {
-		analysisMode = AnalysisModeDefault
-	}
-
-	// For agent mode, use the namespace from the AnalysisRun (already in 'ns' variable)
-	// Agent doesn't need podName - it fetches logs using label selectors
 
 	// Extract rollout name from analysisRun (use analysisRun name as rollout identifier)
 	// The analysisRun name typically includes the rollout name or is unique per rollout
@@ -242,15 +208,14 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		rolloutName = ownerName
 	}
 
-	// Analyze with AI (mode-aware)
+	// Analyze with A2A agent (all analysis is delegated to the agent)
 	log.WithFields(log.Fields{
-		"model":       modelName,
-		"mode":        analysisMode,
+		"agentURL":    cfg.AgentURL,
 		"rolloutName": rolloutName,
-	}).Info("Starting AI analysis")
-	analysisJSON, result, aiErr := analyzeWithMode(analysisMode, modelName, logsContext, ns, rolloutName, stableSelector, canarySelector, cfg.AgentURL, cfg.ExtraPrompt)
+	}).Info("Starting A2A agent analysis")
+	analysisJSON, result, aiErr := analyzeWithAgent(ns, rolloutName, stableSelector, canarySelector, cfg.AgentURL, cfg.ExtraPrompt)
 	if aiErr != nil {
-		log.WithError(aiErr).Error("AI analysis failed")
+		log.WithError(aiErr).Error("A2A agent analysis failed")
 		return markMeasurementError(newMeasurement, aiErr)
 	}
 
@@ -258,7 +223,7 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"promote":        result.Promote,
 		"confidence":     result.Confidence,
 		"analysisLength": len(result.Text),
-	}).Info("AI analysis completed")
+	}).Info("A2A agent analysis completed")
 
 	// Store analysis in metadata
 	if newMeasurement.Metadata == nil {
@@ -273,17 +238,17 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		// Use confidence as a decimal value (0.0 to 1.0)
 		newMeasurement.Value = fmt.Sprintf("%.2f", float64(result.Confidence)/100.0)
 		newMeasurement.Phase = v1alpha1.AnalysisPhaseSuccessful
-		log.Info("Canary promotion recommended by AI analysis")
+		log.Info("Canary promotion recommended by A2A agent analysis")
 	} else {
 		// Failure: canary has issues
 		newMeasurement.Value = "0"
 		newMeasurement.Phase = v1alpha1.AnalysisPhaseFailed
 		log.Info("Canary promotion not recommended")
 
-		// Create GitHub issue on failure (both default and agent modes)
+		// Create GitHub issue on failure
 		if cfg.GitHubURL != "" {
 			log.WithField("githubUrl", cfg.GitHubURL).Info("Attempting to create GitHub issue for canary failure")
-			if issueErr := createCanaryFailureIssue(logsContext, result.Text, cfg.BaseBranch, cfg.GitHubURL, modelName); issueErr != nil {
+			if issueErr := createCanaryFailureIssue(logsContext, result.Text, cfg.BaseBranch, cfg.GitHubURL); issueErr != nil {
 				log.WithError(issueErr).Warn("Failed to create GitHub issue")
 			} else {
 				log.Info("Successfully created GitHub issue for canary failure")
@@ -309,7 +274,7 @@ func markMeasurementError(m v1alpha1.Measurement, err error) v1alpha1.Measuremen
 
 // Resume checks if an external measurement is finished
 func (p *RpcPlugin) Resume(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metric, measurement v1alpha1.Measurement) v1alpha1.Measurement {
-	// Gemini analysis is synchronous, so just return the measurement
+	// A2A agent analysis is synchronous, so just return the measurement
 	return measurement
 }
 
@@ -318,7 +283,7 @@ func (p *RpcPlugin) Terminate(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1
 	log.WithFields(log.Fields{
 		"analysisRun": analysisRun.Name,
 		"metric":      metric.Name,
-	}).Info("Terminating Gemini analysis measurement")
+	}).Info("Terminating A2A agent analysis measurement")
 	return measurement
 }
 
@@ -328,7 +293,7 @@ func (p *RpcPlugin) GarbageCollect(analysisRun *v1alpha1.AnalysisRun, metric v1a
 		"analysisRun": analysisRun.Name,
 		"metric":      metric.Name,
 		"limit":       limit,
-	}).Debug("GarbageCollect called (no-op for Gemini plugin)")
+	}).Debug("GarbageCollect called (no-op for A2A plugin)")
 	return pluginTypes.RpcError{}
 }
 
@@ -345,8 +310,8 @@ func (p *RpcPlugin) GetMetadata(metric v1alpha1.Metric) map[string]string {
 	var cfg aiConfig
 	if pluginCfg, ok := metric.Provider.Plugin["argoproj-labs/metric-ai"]; ok {
 		if err := json.Unmarshal(pluginCfg, &cfg); err == nil {
-			if cfg.Model != "" {
-				metadata["model"] = cfg.Model
+			if cfg.AgentURL != "" {
+				metadata["agentUrl"] = cfg.AgentURL
 			}
 			if cfg.StableLabel != "" {
 				metadata["stableLabel"] = cfg.StableLabel

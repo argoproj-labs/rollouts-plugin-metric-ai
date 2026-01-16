@@ -15,7 +15,7 @@ func TestRun_ParsesConfigAndReturnsResult(t *testing.T) {
 	analysisRun.Name = "test-analysis"
 	analysisRun.Namespace = "default"
 
-	cfg := aiConfig{Model: "gemini-1.5-pro-latest"}
+	cfg := aiConfig{AgentURL: "http://localhost:8080"}
 	b, _ := json.Marshal(cfg)
 
 	metric := v1alpha1.Metric{
@@ -27,12 +27,12 @@ func TestRun_ParsesConfigAndReturnsResult(t *testing.T) {
 		},
 	}
 
-	// Override AI call to avoid external dependency
-	old := analyzeLogsWithAI
-	analyzeLogsWithAI = func(params AIAnalysisParams) (string, AIAnalysisResult, error) {
+	// Override agent analysis call to avoid external dependency
+	old := analyzeWithAgent
+	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
 		return `{"text":"ok","promote":true,"confidence":100}`, AIAnalysisResult{Text: "ok", Promote: true, Confidence: 100}, nil
 	}
-	t.Cleanup(func() { analyzeLogsWithAI = old })
+	t.Cleanup(func() { analyzeWithAgent = old })
 
 	// Stub kube access
 	oldKC := acquireKubeClient
@@ -65,7 +65,7 @@ func TestRun_FailureCreatesIssue(t *testing.T) {
 	analysisRun.Namespace = "default"
 
 	cfg := aiConfig{
-		Model:     "gemini-1.5-pro-latest",
+		AgentURL:  "http://localhost:8080",
 		GitHubURL: "https://github.com/owner/repo",
 	}
 	b, _ := json.Marshal(cfg)
@@ -79,12 +79,12 @@ func TestRun_FailureCreatesIssue(t *testing.T) {
 		},
 	}
 
-	// Override AI call to return failure
-	old := analyzeLogsWithAI
-	analyzeLogsWithAI = func(params AIAnalysisParams) (string, AIAnalysisResult, error) {
+	// Override agent analysis call to return failure
+	old := analyzeWithAgent
+	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
 		return `{"text":"canary is bad","promote":false,"confidence":90}`, AIAnalysisResult{Text: "canary is bad", Promote: false, Confidence: 90}, nil
 	}
-	t.Cleanup(func() { analyzeLogsWithAI = old })
+	t.Cleanup(func() { analyzeWithAgent = old })
 
 	// Stub kube access
 	oldKC := acquireKubeClient
@@ -110,7 +110,7 @@ func TestGetMetadata(t *testing.T) {
 	p := &RpcPlugin{}
 
 	cfg := aiConfig{
-		Model:       "gemini-1.5-pro-latest",
+		AgentURL:    "http://localhost:8080",
 		StableLabel: "app=stable",
 		CanaryLabel: "app=canary",
 	}
@@ -130,8 +130,8 @@ func TestGetMetadata(t *testing.T) {
 	if metadata["provider"] != ProviderType {
 		t.Fatalf("expected provider %s, got %s", ProviderType, metadata["provider"])
 	}
-	if metadata["model"] != "gemini-1.5-pro-latest" {
-		t.Fatalf("expected model gemini-1.5-pro-latest, got %s", metadata["model"])
+	if metadata["agentUrl"] != "http://localhost:8080" {
+		t.Fatalf("expected agentUrl http://localhost:8080, got %s", metadata["agentUrl"])
 	}
 }
 

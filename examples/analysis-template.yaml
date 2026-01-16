@@ -12,6 +12,6 @@ spec:
     provider:
       plugin:
         argoproj-labs/metric-ai:
-          model: gemini-2.0-flash
+          agentUrl: http://kubernetes-agent:8080
           baseBranch: main
           githubUrl: https://github.com/carlossg/rollouts-demo

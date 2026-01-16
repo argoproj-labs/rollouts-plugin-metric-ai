@@ -40,12 +40,6 @@ func getSecretValue(namespace, key string) (string, error) {
 	}
 
 	switch key {
-	case "google_api_key":
-		apiKey := string(secret.Data["google_api_key"])
-		if apiKey == "" {
-			return "", fmt.Errorf("google API key not loaded at startup")
-		}
-		return apiKey, nil
 	case "github_token":
 		githubToken := string(secret.Data["github_token"])
 		if githubToken == "" {
