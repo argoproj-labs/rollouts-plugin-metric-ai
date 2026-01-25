@@ -33,6 +33,22 @@ type A2AResponse struct {
 	PRLink      string `json:"prLink,omitempty"`
 	Promote     bool   `json:"promote"`
 	Confidence  int    `json:"confidence"`
+	
+	// Multi-model fields
+	ModelResults     []ModelAnalysisResult `json:"modelResults,omitempty"`
+	VotingRationale  string                `json:"votingRationale,omitempty"`
+}
+
+// ModelAnalysisResult represents a single model's analysis
+type ModelAnalysisResult struct {
+	ModelName       string `json:"modelName"`
+	Analysis        string `json:"analysis"`
+	RootCause       string `json:"rootCause"`
+	Remediation     string `json:"remediation"`
+	Promote         bool   `json:"promote"`
+	Confidence      int    `json:"confidence"`
+	ExecutionTimeMs int64  `json:"executionTimeMs"`
+	Error           string `json:"error,omitempty"`
 }
 
 // NewA2AClient creates a new A2A client
@@ -128,7 +144,25 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 		"rootCause":   result.RootCause,
 		"remediation": result.Remediation,
 		"prLink":      result.PRLink,
+		"modelCount":  len(result.ModelResults),
 	}).Info("Received analysis from Kubernetes Agent")
+	
+	// Log individual model results if multi-model analysis
+	if len(result.ModelResults) > 0 {
+		log.Info("Multi-model analysis results:")
+		for _, modelResult := range result.ModelResults {
+			log.WithFields(log.Fields{
+				"model":      modelResult.ModelName,
+				"promote":    modelResult.Promote,
+				"confidence": modelResult.Confidence,
+				"timeMs":     modelResult.ExecutionTimeMs,
+			}).Info("Model result")
+		}
+		
+		if result.VotingRationale != "" {
+			log.WithField("rationale", result.VotingRationale).Info("Voting rationale")
+		}
+	}
 
 	return &result, nil
 }

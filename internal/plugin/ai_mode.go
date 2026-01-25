@@ -56,6 +56,10 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 		Text:       resp.Analysis,
 		Promote:    resp.Promote,
 		Confidence: resp.Confidence,
+		
+		// Multi-model fields
+		ModelResults:    convertModelResults(resp.ModelResults),
+		VotingRationale: resp.VotingRationale,
 	}
 
 	// Build JSON response for Argo Rollouts
@@ -82,4 +86,10 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 	}).Info("Analysis completed via Kubernetes Agent")
 
 	return string(rawJSON), result, nil
+}
+
+// convertModelResults converts A2A model results to plugin model results
+func convertModelResults(a2aResults []ModelAnalysisResult) []ModelAnalysisResult {
+	// Already the same type, just return
+	return a2aResults
 }
