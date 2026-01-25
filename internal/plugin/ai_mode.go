@@ -56,7 +56,7 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 		Text:       resp.Analysis,
 		Promote:    resp.Promote,
 		Confidence: resp.Confidence,
-		
+
 		// Multi-model fields
 		ModelResults:    convertModelResults(resp.ModelResults),
 		VotingRationale: resp.VotingRationale,

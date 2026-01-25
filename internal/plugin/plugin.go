@@ -232,7 +232,7 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 	newMeasurement.Metadata["analysis"] = result.Text
 	newMeasurement.Metadata["analysisJSON"] = analysisJSON
 	newMeasurement.Metadata["confidence"] = fmt.Sprintf("%d", result.Confidence)
-	
+
 	// Store multi-model results if available
 	if len(result.ModelResults) > 0 {
 		modelResultsJSON, err := json.Marshal(result.ModelResults)
@@ -240,11 +240,11 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 			newMeasurement.Metadata["modelResults"] = string(modelResultsJSON)
 		}
 		newMeasurement.Metadata["modelCount"] = fmt.Sprintf("%d", len(result.ModelResults))
-		
+
 		if result.VotingRationale != "" {
 			newMeasurement.Metadata["votingRationale"] = result.VotingRationale
 		}
-		
+
 		log.WithField("modelCount", len(result.ModelResults)).Info("Stored multi-model analysis results in metadata")
 	}
 
