@@ -77,9 +77,9 @@ func extractOwnerRepoFromURL(githubURL string) (string, string, error) {
 
 // createGitHubIssue creates a GitHub issue using the API
 func createGitHubIssue(owner, repo, title, body string) error {
-	githubToken, err := getSecretValue("argo-rollouts", "github_token")
-	if err != nil {
-		return fmt.Errorf("failed to get GitHub token from secret: %v", err)
+	// Use the githubToken loaded at startup from mounted secret file
+	if githubToken == "" {
+		return fmt.Errorf("github token not loaded at startup - check if secret is mounted at /etc/secrets/github_token")
 	}
 
 	ctx := context.Background()

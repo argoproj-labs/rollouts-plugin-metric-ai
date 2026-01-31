@@ -162,6 +162,8 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"stableSelector": stableSelector,
 		"canarySelector": canarySelector,
 		"agentURL":       cfg.AgentURL,
+		"githubURL":      cfg.GitHubURL,
+		"baseBranch":     cfg.BaseBranch,
 	}).Info("Fetching pod logs for analysis")
 
 	// Get Kubernetes client
@@ -261,6 +263,12 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		log.Info("Canary promotion not recommended")
 
 		// Create GitHub issue on failure
+		log.WithFields(log.Fields{
+			"githubURLConfigured": cfg.GitHubURL != "",
+			"githubURL":            cfg.GitHubURL,
+			"baseBranch":           cfg.BaseBranch,
+		}).Info("Checking GitHub issue creation configuration")
+		
 		if cfg.GitHubURL != "" {
 			log.WithField("githubUrl", cfg.GitHubURL).Info("Attempting to create GitHub issue for canary failure")
 			if issueErr := createCanaryFailureIssue(logsContext, result.Text, cfg.BaseBranch, cfg.GitHubURL); issueErr != nil {
@@ -269,7 +277,7 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 				log.Info("Successfully created GitHub issue for canary failure")
 			}
 		} else {
-			log.Info("Skipping GitHub issue creation (githubUrl not configured)")
+			log.Warn("Skipping GitHub issue creation (githubUrl not configured in AnalysisTemplate)")
 		}
 	}
 
