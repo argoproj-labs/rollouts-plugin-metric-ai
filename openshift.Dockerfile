@@ -37,7 +37,7 @@ RUN echo '#!/bin/sh' > /usr/local/bin/startup.sh && \
     echo 'echo "Plugin copied successfully"' >> /usr/local/bin/startup.sh && \
     echo 'ls -la /home/argo-rollouts/plugin-bin/argoproj-labs/' >> /usr/local/bin/startup.sh && \
     echo 'echo "Starting argo-rollouts..."' >> /usr/local/bin/startup.sh && \
-    echo 'exec /bin/rollouts-controller "$@"' >> /usr/local/bin/startup.sh && \
+    echo 'exec /usr/local/bin/rollouts-controller "$@"' >> /usr/local/bin/startup.sh && \
     chmod +x /usr/local/bin/startup.sh
 
 USER 999
