@@ -375,17 +375,17 @@ var getKubeClient = func() (*kubernetes.Clientset, error) {
 }
 
 var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, namespace, labelSelector string) (string, error) {
-	log := log.WithFields(log.Fields{
+	logger := log.WithFields(log.Fields{
 		"namespace":     namespace,
 		"labelSelector": labelSelector,
 	})
 	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
-		log.Error("Failed to list pods", err)
+		logger.Error("Failed to list pods", err)
 		return "", fmt.Errorf("failed to list pods for selector %s in namespace %s: %w", labelSelector, namespace, err)
 	}
 	if len(pods.Items) == 0 {
-		log.Error("No pods found for selector")
+		logger.Error("No pods found for selector")
 		return "", errors.NewNotFound(schema.GroupResource{Group: "", Resource: "pods"}, labelSelector)
 	}
 	pod := pods.Items[0]
@@ -404,7 +404,7 @@ var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, 
 		containerName = pod.Spec.Containers[0].Name
 	}
 	
-	log.WithFields(log.Fields{
+	logger.WithFields(log.Fields{
 		"podName":       pod.Name,
 		"containerName": containerName,
 	}).Info("Fetching logs from container")
@@ -415,7 +415,7 @@ var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, 
 	req := client.CoreV1().Pods(namespace).GetLogs(pod.Name, podLogOpts)
 	bytes, err := req.DoRaw(ctx)
 	if err != nil {
-		log.WithFields(log.Fields{
+		logger.WithFields(log.Fields{
 			"podName":       pod.Name,
 			"containerName": containerName,
 		}).Error("Failed to fetch logs for pod", err)
