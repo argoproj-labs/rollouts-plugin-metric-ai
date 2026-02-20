@@ -42,22 +42,28 @@ var (
 	githubToken string
 )
 
-// loadConfigFromFiles reads configuration from mounted secret files
+// loadConfigFromFiles reads configuration from mounted secret files or environment variables
 func loadConfigFromFiles() error {
 	secretsDir := "/etc/secrets"
 
-	// Read GitHub Token
+	// Read GitHub Token - try file first, then environment variable
 	tokenFile := filepath.Join(secretsDir, "github_token")
-	if data, err := os.ReadFile(tokenFile); err != nil {
-		return fmt.Errorf("failed to read GitHub token from %s: %v", tokenFile, err)
-	} else {
+	if data, err := os.ReadFile(tokenFile); err == nil {
 		githubToken = strings.TrimSpace(string(data))
 		if githubToken == "" {
 			return fmt.Errorf("github token is empty in %s", tokenFile)
 		}
+		log.Info("Successfully loaded GitHub token from mounted file")
+	} else {
+		// Fall back to environment variable
+		githubToken = strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
+		if githubToken == "" {
+			return fmt.Errorf("failed to read GitHub token from %s and GITHUB_TOKEN environment variable is not set: %v", tokenFile, err)
+		}
+		log.Info("Successfully loaded GitHub token from environment variable")
 	}
 
-	log.Info("Successfully loaded configuration from mounted files")
+	log.Info("Successfully loaded configuration")
 	return nil
 }
 
