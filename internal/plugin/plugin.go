@@ -265,10 +265,10 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		// Create GitHub issue on failure
 		log.WithFields(log.Fields{
 			"githubURLConfigured": cfg.GitHubURL != "",
-			"githubURL":            cfg.GitHubURL,
-			"baseBranch":           cfg.BaseBranch,
+			"githubURL":           cfg.GitHubURL,
+			"baseBranch":          cfg.BaseBranch,
 		}).Info("Checking GitHub issue creation configuration")
-		
+
 		if cfg.GitHubURL != "" {
 			log.WithField("githubUrl", cfg.GitHubURL).Info("Attempting to create GitHub issue for canary failure")
 			if issueErr := createCanaryFailureIssue(logsContext, result.Text, cfg.BaseBranch, cfg.GitHubURL); issueErr != nil {

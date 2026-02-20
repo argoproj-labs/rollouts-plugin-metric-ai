@@ -1,0 +1,75 @@
+name: Release Plugin Binary
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag version (e.g., v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build plugin binary
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o rollouts-plugin-metric-ai-linux-amd64 main.go
+          chmod +x rollouts-plugin-metric-ai-linux-amd64
+          ls -lh rollouts-plugin-metric-ai-linux-amd64
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: Release ${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            rollouts-plugin-metric-ai-linux-amd64
+          body: |
+            ## Argo Rollouts AI Metric Plugin ${{ steps.version.outputs.VERSION }}
+            
+            ### Installation
+            
+            Use this plugin with Argo Rollouts by configuring the RolloutManager:
+            
+            ```yaml
+            apiVersion: argoproj.io/v1alpha1
+            kind: RolloutManager
+            metadata:
+              name: argo-rollouts
+            spec:
+              plugins:
+                metric:
+                  - name: argoproj-labs/metric-ai
+                    location: https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/rollouts-plugin-metric-ai-linux-amd64
+            ```
+            
+            ### Changes
+            - AI-powered metric analysis for canary deployments
+            - Integration with Kubernetes agent for log analysis
+            - Support for GitHub issue creation on failures
