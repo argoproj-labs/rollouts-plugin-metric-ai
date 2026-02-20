@@ -25,7 +25,20 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o ma
 FROM quay.io/kevindubois/argo-rollouts-rhel8
 
 # Copy the plugin binary to /plugins/ directory where RolloutManager expects it
-# The controller will copy it to /home/argo-rollouts/plugin-bin/argoproj-labs/metric-ai at startup
 COPY --from=builder /workspace/manager /plugins/rollouts-plugin-metric-ai/metric-ai
 
-# The base image already has the correct user and entrypoint
+# Create a startup script that copies the plugin before starting argo-rollouts
+USER root
+RUN echo '#!/bin/sh' > /usr/local/bin/startup.sh && \
+    echo 'echo "Copying metric plugin to plugin directory..."' >> /usr/local/bin/startup.sh && \
+    echo 'mkdir -p /home/argo-rollouts/plugin-bin/argoproj-labs' >> /usr/local/bin/startup.sh && \
+    echo 'cp /plugins/rollouts-plugin-metric-ai/metric-ai /home/argo-rollouts/plugin-bin/argoproj-labs/metric-ai' >> /usr/local/bin/startup.sh && \
+    echo 'chmod +x /home/argo-rollouts/plugin-bin/argoproj-labs/metric-ai' >> /usr/local/bin/startup.sh && \
+    echo 'echo "Plugin copied successfully"' >> /usr/local/bin/startup.sh && \
+    echo 'ls -la /home/argo-rollouts/plugin-bin/argoproj-labs/' >> /usr/local/bin/startup.sh && \
+    echo 'echo "Starting argo-rollouts..."' >> /usr/local/bin/startup.sh && \
+    echo 'exec /bin/rollouts-controller "$@"' >> /usr/local/bin/startup.sh && \
+    chmod +x /usr/local/bin/startup.sh
+
+USER 999
+ENTRYPOINT ["/usr/local/bin/startup.sh"]
