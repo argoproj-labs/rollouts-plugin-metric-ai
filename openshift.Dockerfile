@@ -22,7 +22,7 @@ COPY internal/ internal/
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager main.go
 
-FROM registry.redhat.io/openshift-gitops-1/argo-rollouts-rhel8@sha256:719e2cf3d5046ab03c75673f3d43676b685d0af4b1cb6f03e11491177540d4a8
+FROM quay.io/kevindubois/argo-rollouts-rhel8
 COPY --from=builder /workspace/manager /home/argo-rollouts/rollouts-plugin-metric-ai
 # USER 65532:65532
 
