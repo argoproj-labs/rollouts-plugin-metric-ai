@@ -389,12 +389,37 @@ var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, 
 		return "", errors.NewNotFound(schema.GroupResource{Group: "", Resource: "pods"}, labelSelector)
 	}
 	pod := pods.Items[0]
-	podLogOpts := &corev1.PodLogOptions{}
+	
+	// Find the application container (skip istio-proxy and istio-init)
+	containerName := ""
+	for _, container := range pod.Spec.Containers {
+		if container.Name != "istio-proxy" && container.Name != "istio-init" {
+			containerName = container.Name
+			break
+		}
+	}
+	
+	// If no app container found, use the first container
+	if containerName == "" && len(pod.Spec.Containers) > 0 {
+		containerName = pod.Spec.Containers[0].Name
+	}
+	
+	log.WithFields(log.Fields{
+		"podName":       pod.Name,
+		"containerName": containerName,
+	}).Info("Fetching logs from container")
+	
+	podLogOpts := &corev1.PodLogOptions{
+		Container: containerName,
+	}
 	req := client.CoreV1().Pods(namespace).GetLogs(pod.Name, podLogOpts)
 	bytes, err := req.DoRaw(ctx)
 	if err != nil {
-		log.WithField("podName", pod.Name).Error("Failed to fetch logs for pod", err)
-		return "", fmt.Errorf("failed to fetch logs for pod %s in namespace %s: %w", pod.Name, namespace, err)
+		log.WithFields(log.Fields{
+			"podName":       pod.Name,
+			"containerName": containerName,
+		}).Error("Failed to fetch logs for pod", err)
+		return "", fmt.Errorf("failed to fetch logs for pod %s container %s in namespace %s: %w", pod.Name, containerName, namespace, err)
 	}
 	return string(bytes), nil
 }
