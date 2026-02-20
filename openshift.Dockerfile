@@ -23,7 +23,9 @@ COPY internal/ internal/
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager main.go
 
 FROM quay.io/kevindubois/argo-rollouts-rhel8
-COPY --from=builder /workspace/manager /home/argo-rollouts/rollouts-plugin-metric-ai
-# USER 65532:65532
 
-# ENTRYPOINT ["/home/argo-rollouts/rollouts-plugin-metric-ai"]
+# Copy the plugin binary to /plugins/ directory where RolloutManager expects it
+# The controller will copy it to /home/argo-rollouts/plugin-bin/argoproj-labs/metric-ai at startup
+COPY --from=builder /workspace/manager /plugins/rollouts-plugin-metric-ai/metric-ai
+
+# The base image already has the correct user and entrypoint
