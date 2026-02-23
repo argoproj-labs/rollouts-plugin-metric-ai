@@ -25,4 +25,19 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o ma
 FROM quay.io/kevindubois/argo-rollouts-rhel8
 
 # Copy the plugin binary to /plugins/ directory where RolloutManager expects it
+# The controller will copy it to /home/argo-rollouts/plugin-bin/argoproj-labs/metric-ai at startup
 COPY --from=builder /workspace/manager /plugins/rollouts-plugin-metric-ai/metric-ai
+
+# Create entrypoint script that sets up secrets from environment variables
+RUN echo '#!/bin/sh' > /usr/local/bin/entrypoint-wrapper.sh && \
+    echo 'set -e' >> /usr/local/bin/entrypoint-wrapper.sh && \
+    echo 'mkdir -p /etc/secrets' >> /usr/local/bin/entrypoint-wrapper.sh && \
+    echo 'if [ -n "$GITHUB_TOKEN" ]; then' >> /usr/local/bin/entrypoint-wrapper.sh && \
+    echo '  echo "$GITHUB_TOKEN" > /etc/secrets/github_token' >> /usr/local/bin/entrypoint-wrapper.sh && \
+    echo '  chmod 600 /etc/secrets/github_token' >> /usr/local/bin/entrypoint-wrapper.sh && \
+    echo 'fi' >> /usr/local/bin/entrypoint-wrapper.sh && \
+    echo 'exec /usr/local/bin/rollouts-controller "$@"' >> /usr/local/bin/entrypoint-wrapper.sh && \
+    chmod +x /usr/local/bin/entrypoint-wrapper.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-wrapper.sh"]
+
