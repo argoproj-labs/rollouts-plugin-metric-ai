@@ -390,7 +390,7 @@ var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, 
 	}
 	pod := pods.Items[0]
 	
-	// Find the application container (skip istio-proxy and istio-init)
+	// Find the application container
 	containerName := ""
 	for _, container := range pod.Spec.Containers {
 		if container.Name != "istio-proxy" && container.Name != "istio-init" {
