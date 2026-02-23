@@ -26,6 +26,3 @@ FROM quay.io/kevindubois/argo-rollouts-rhel8
 
 # Copy the plugin binary to /plugins/ directory where RolloutManager expects it
 COPY --from=builder /workspace/manager /plugins/rollouts-plugin-metric-ai/metric-ai
-
-USER 999
-ENTRYPOINT ["/usr/local/bin/startup.sh"]
