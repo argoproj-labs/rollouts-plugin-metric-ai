@@ -62,17 +62,6 @@ jobs:
           tags: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
-      - name: Build and push OpenShift Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./openshift.Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: ghcr.io/${{ github.repository }}-openshift:${{ steps.version.outputs.VERSION }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
