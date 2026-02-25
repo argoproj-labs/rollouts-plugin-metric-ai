@@ -13,5 +13,4 @@ spec:
         plugin:
           argoproj-labs/metric-ai:
             agentUrl: http://kubernetes-agent:8080
-            baseBranch: main
-            githubUrl: https://github.com/carlossg/rollouts-demo
+            extraPrompt: "Focus on error rates and response times"

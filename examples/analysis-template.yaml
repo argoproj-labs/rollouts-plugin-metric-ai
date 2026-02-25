@@ -14,4 +14,4 @@ spec:
         argoproj-labs/metric-ai:
           agentUrl: http://kubernetes-agent:8080
           baseBranch: main
-          githubUrl: https://github.com/carlossg/rollouts-demo
+          githubUrl: https://github.com/kevindubois/progressive-delivery

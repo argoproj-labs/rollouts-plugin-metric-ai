@@ -10,17 +10,19 @@ import (
 // analyzeWithAgent delegates all analysis to the Kubernetes Agent via A2A
 // This is now the only analysis method - no direct LLM calls
 // Declared as a variable to allow test stubbing
-var analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
+var analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string) (string, AIAnalysisResult, error) {
 	log.WithFields(log.Fields{
 		"namespace":   namespace,
 		"rolloutName": rolloutName,
+		"githubUrl":   githubUrl,
+		"baseBranch":  baseBranch,
 	}).Info("Delegating analysis to Kubernetes Agent")
 
-	return analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt)
+	return analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch)
 }
 
 // analyzeWithKubernetesAgent delegates analysis to the Kubernetes Agent via A2A
-func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
+func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string) (string, AIAnalysisResult, error) {
 	// Agent URL must be explicitly configured in the AnalysisTemplate
 	if agentURL == "" {
 		return "", AIAnalysisResult{}, fmt.Errorf("agent mode requires agentUrl to be configured in the AnalysisTemplate")
@@ -42,10 +44,12 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 		"stableSelector": stableSelector,
 		"canarySelector": canarySelector,
 		"extraPrompt":    extraPrompt != "",
+		"githubUrl":      githubUrl,
+		"baseBranch":     baseBranch,
 	}).Info("Agent mode: letting agent fetch logs using its own tools")
 
 	// Send request to agent with pod selectors (no logs)
-	resp, err := client.AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt)
+	resp, err := client.AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt, githubUrl, baseBranch)
 	if err != nil {
 		log.WithError(err).Error("Failed to analyze with kubernetes-agent")
 		return "", AIAnalysisResult{}, err

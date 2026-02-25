@@ -33,8 +33,7 @@ spec:
       #     name: argoproj-labs/step-ai
       #     config:
       #       model: gemini-2.0-flash
-      #       baseBranch: main
-      #       githubUrl: https://github.com/carlossg/rollouts-demo
+      #       extraPrompt: "Additional analysis context"
       - setWeight: 40
       - pause:
           duration: 10
