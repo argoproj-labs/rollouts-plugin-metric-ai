@@ -51,13 +51,15 @@ func NewA2AClient(baseURL string) *A2AClient {
 
 // AnalyzeWithAgent sends analysis request to Kubernetes Agent
 // In agent mode, send pod selectors instead of logs - let the agent fetch logs using its tools
-func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt string) (*A2AResponse, error) {
+func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt, githubUrl, baseBranch string) (*A2AResponse, error) {
 	log.WithFields(log.Fields{
 		"namespace":      namespace,
 		"rolloutName":    rolloutName,
 		"stableSelector": stableSelector,
 		"canarySelector": canarySelector,
 		"extraPrompt":    extraPrompt != "",
+		"githubUrl":      githubUrl,
+		"baseBranch":     baseBranch,
 	}).Info("Sending analysis request to Kubernetes Agent")
 
 	// Use rollout name as memory ID to maintain conversation history per rollout
@@ -90,6 +92,14 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 	// Include extraPrompt in context for potential use by the agent
 	if extraPrompt != "" {
 		req.Context["extraPrompt"] = extraPrompt
+	}
+
+	// Include GitHub configuration for remediation
+	if githubUrl != "" {
+		req.Context["repoUrl"] = githubUrl
+	}
+	if baseBranch != "" {
+		req.Context["baseBranch"] = baseBranch
 	}
 
 	body, err := json.Marshal(req)

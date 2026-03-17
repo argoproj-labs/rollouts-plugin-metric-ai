@@ -5,9 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/rpc"
-	"os"
-	"path/filepath"
-	"strings"
 
 	v1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	"github.com/argoproj/argo-rollouts/utils/plugin/types"
@@ -37,37 +34,6 @@ func test() {
 
 const ProviderType = "MetricAI"
 
-// Configuration loaded at startup
-var (
-	githubToken string
-)
-
-// loadConfigFromFiles reads configuration from mounted secret files
-func loadConfigFromFiles() error {
-	secretsDir := "/etc/secrets"
-
-	// Read GitHub Token
-	tokenFile := filepath.Join(secretsDir, "github_token")
-	if data, err := os.ReadFile(tokenFile); err != nil {
-		return fmt.Errorf("failed to read GitHub token from %s: %v", tokenFile, err)
-	} else {
-		githubToken = strings.TrimSpace(string(data))
-		if githubToken == "" {
-			return fmt.Errorf("github token is empty in %s", tokenFile)
-		}
-	}
-
-	log.Info("Successfully loaded configuration from mounted files")
-	return nil
-}
-
-// validateConfig validates that all required configuration is present
-func validateConfig() error {
-	if githubToken == "" {
-		return fmt.Errorf("github token is required but not configured")
-	}
-	return nil
-}
 
 // RpcPlugin implements the metric provider RPC interface
 type RpcPlugin struct {
@@ -94,28 +60,18 @@ type aiConfig struct {
 	// optional: namespace label selectors for stable/canary pods
 	StableLabel string `json:"stableLabel,omitempty"`
 	CanaryLabel string `json:"canaryLabel,omitempty"`
-	// GitHub base branch
-	BaseBranch string `json:"baseBranch,omitempty"`
-	// GitHub repository URL
-	GitHubURL string `json:"githubUrl,omitempty"`
 	// Agent URL for A2A agent (required)
 	AgentURL string `json:"agentUrl"`
 	// Extra prompt text to append to the AI analysis
 	ExtraPrompt string `json:"extraPrompt,omitempty"`
+	// GitHub repository URL for creating issues/PRs
+	GitHubURL string `json:"githubUrl,omitempty"`
+	// Base branch for GitHub PRs
+	BaseBranch string `json:"baseBranch,omitempty"`
 }
 
 func (g *RpcPlugin) InitPlugin() types.RpcError {
 	log.Info("Initializing AI metric plugin")
-
-	// Initialize configuration at startup
-	if err := loadConfigFromFiles(); err != nil {
-		log.WithError(err).Fatal("Failed to load configuration")
-	}
-
-	if err := validateConfig(); err != nil {
-		log.WithError(err).Fatal("Configuration validation failed")
-	}
-
 	log.Info("AI metric plugin initialized successfully")
 	return types.RpcError{}
 }
@@ -162,8 +118,6 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"stableSelector": stableSelector,
 		"canarySelector": canarySelector,
 		"agentURL":       cfg.AgentURL,
-		"githubURL":      cfg.GitHubURL,
-		"baseBranch":     cfg.BaseBranch,
 	}).Info("Fetching pod logs for analysis")
 
 	// Get Kubernetes client
@@ -200,9 +154,6 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"canaryLogsLength": len(canaryLogs),
 	}).Info("Successfully fetched pod logs")
 
-	// Combine logs for potential GitHub issue creation
-	logsContext := "--- STABLE LOGS ---\n" + stableLogs + "\n\n--- CANARY LOGS ---\n" + canaryLogs
-
 	// Extract rollout name from analysisRun (use analysisRun name as rollout identifier)
 	// The analysisRun name typically includes the rollout name or is unique per rollout
 	rolloutName := analysisRun.Name
@@ -214,8 +165,10 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 	log.WithFields(log.Fields{
 		"agentURL":    cfg.AgentURL,
 		"rolloutName": rolloutName,
+		"githubUrl":   cfg.GitHubURL,
+		"baseBranch":  cfg.BaseBranch,
 	}).Info("Starting A2A agent analysis")
-	analysisJSON, result, aiErr := analyzeWithAgent(ns, rolloutName, stableSelector, canarySelector, cfg.AgentURL, cfg.ExtraPrompt)
+	analysisJSON, result, aiErr := analyzeWithAgent(ns, rolloutName, stableSelector, canarySelector, cfg.AgentURL, cfg.ExtraPrompt, cfg.GitHubURL, cfg.BaseBranch)
 	if aiErr != nil {
 		log.WithError(aiErr).Error("A2A agent analysis failed")
 		return markMeasurementError(newMeasurement, aiErr)
@@ -260,25 +213,7 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		// Failure: canary has issues
 		newMeasurement.Value = "0"
 		newMeasurement.Phase = v1alpha1.AnalysisPhaseFailed
-		log.Info("Canary promotion not recommended")
-
-		// Create GitHub issue on failure
-		log.WithFields(log.Fields{
-			"githubURLConfigured": cfg.GitHubURL != "",
-			"githubURL":            cfg.GitHubURL,
-			"baseBranch":           cfg.BaseBranch,
-		}).Info("Checking GitHub issue creation configuration")
-		
-		if cfg.GitHubURL != "" {
-			log.WithField("githubUrl", cfg.GitHubURL).Info("Attempting to create GitHub issue for canary failure")
-			if issueErr := createCanaryFailureIssue(logsContext, result.Text, cfg.BaseBranch, cfg.GitHubURL); issueErr != nil {
-				log.WithError(issueErr).Warn("Failed to create GitHub issue")
-			} else {
-				log.Info("Successfully created GitHub issue for canary failure")
-			}
-		} else {
-			log.Warn("Skipping GitHub issue creation (githubUrl not configured in AnalysisTemplate)")
-		}
+		log.Info("Canary promotion not recommended - kubernetes-agent can create GitHub issues/PRs via its tools")
 	}
 
 	finishedTime := metav1.Now()
@@ -369,26 +304,51 @@ var getKubeClient = func() (*kubernetes.Clientset, error) {
 }
 
 var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, namespace, labelSelector string) (string, error) {
-	log := log.WithFields(log.Fields{
+	logger := log.WithFields(log.Fields{
 		"namespace":     namespace,
 		"labelSelector": labelSelector,
 	})
 	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
-		log.Error("Failed to list pods", err)
+		logger.Error("Failed to list pods", err)
 		return "", fmt.Errorf("failed to list pods for selector %s in namespace %s: %w", labelSelector, namespace, err)
 	}
 	if len(pods.Items) == 0 {
-		log.Error("No pods found for selector")
+		logger.Error("No pods found for selector")
 		return "", errors.NewNotFound(schema.GroupResource{Group: "", Resource: "pods"}, labelSelector)
 	}
 	pod := pods.Items[0]
-	podLogOpts := &corev1.PodLogOptions{}
+	
+	// Find the application container
+	containerName := ""
+	for _, container := range pod.Spec.Containers {
+		if container.Name != "istio-proxy" && container.Name != "istio-init" {
+			containerName = container.Name
+			break
+		}
+	}
+	
+	// If no app container found, use the first container
+	if containerName == "" && len(pod.Spec.Containers) > 0 {
+		containerName = pod.Spec.Containers[0].Name
+	}
+	
+	logger.WithFields(log.Fields{
+		"podName":       pod.Name,
+		"containerName": containerName,
+	}).Info("Fetching logs from container")
+	
+	podLogOpts := &corev1.PodLogOptions{
+		Container: containerName,
+	}
 	req := client.CoreV1().Pods(namespace).GetLogs(pod.Name, podLogOpts)
 	bytes, err := req.DoRaw(ctx)
 	if err != nil {
-		log.WithField("podName", pod.Name).Error("Failed to fetch logs for pod", err)
-		return "", fmt.Errorf("failed to fetch logs for pod %s in namespace %s: %w", pod.Name, namespace, err)
+		logger.WithFields(log.Fields{
+			"podName":       pod.Name,
+			"containerName": containerName,
+		}).Error("Failed to fetch logs for pod", err)
+		return "", fmt.Errorf("failed to fetch logs for pod %s container %s in namespace %s: %w", pod.Name, containerName, namespace, err)
 	}
 	return string(bytes), nil
 }

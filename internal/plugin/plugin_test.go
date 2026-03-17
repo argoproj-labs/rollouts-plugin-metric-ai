@@ -29,7 +29,7 @@ func TestRun_ParsesConfigAndReturnsResult(t *testing.T) {
 
 	// Override agent analysis call to avoid external dependency
 	old := analyzeWithAgent
-	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
+	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string) (string, AIAnalysisResult, error) {
 		return `{"text":"ok","promote":true,"confidence":100}`, AIAnalysisResult{Text: "ok", Promote: true, Confidence: 100}, nil
 	}
 	t.Cleanup(func() { analyzeWithAgent = old })
@@ -65,8 +65,7 @@ func TestRun_FailureCreatesIssue(t *testing.T) {
 	analysisRun.Namespace = "default"
 
 	cfg := aiConfig{
-		AgentURL:  "http://localhost:8080",
-		GitHubURL: "https://github.com/owner/repo",
+		AgentURL: "http://localhost:8080",
 	}
 	b, _ := json.Marshal(cfg)
 
@@ -81,7 +80,7 @@ func TestRun_FailureCreatesIssue(t *testing.T) {
 
 	// Override agent analysis call to return failure
 	old := analyzeWithAgent
-	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt string) (string, AIAnalysisResult, error) {
+	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string) (string, AIAnalysisResult, error) {
 		return `{"text":"canary is bad","promote":false,"confidence":90}`, AIAnalysisResult{Text: "canary is bad", Promote: false, Confidence: 90}, nil
 	}
 	t.Cleanup(func() { analyzeWithAgent = old })

@@ -4,7 +4,7 @@ Standalone Argo Rollouts Metric Provider plugin written in Go. It:
 - Collects stable/canary pod logs in the Rollout namespace
 - **Delegates all AI analysis to an A2A (Agent-to-Agent) agent** - no direct LLM calls
 - The agent autonomously fetches logs and performs structured analysis
-- On failure, creates GitHub issues with AI-generated analysis
+- The agent can create GitHub issues/PRs using its own tools when configured
 
 Configuration snippet in argo-rollouts-config ConfigMap:
 
@@ -36,9 +36,8 @@ spec:
             agentUrl: http://kubernetes-agent.argo-rollouts.svc.cluster.local:8080
             stableLabel: role=stable
             canaryLabel: role=canary
-            # Optional: Create GitHub issues on failure
-            githubUrl: https://github.com/carlossg/rollouts-demo
-            baseBranch: main
+            # Optional: Additional context for AI analysis
+            extraPrompt: "Focus on error patterns and performance metrics"
 ```
 
 ## How It Works
@@ -69,9 +68,6 @@ spec:
             # Required: Pod selectors for agent to fetch logs
             stableLabel: role=stable
             canaryLabel: role=canary
-            # Optional: Create GitHub issues on failures
-            githubUrl: https://github.com/carlossg/rollouts-demo
-            baseBranch: main
             # Optional: Additional context for AI analysis
             extraPrompt: "Ignore color changes. Consider LoadBalancerNegNotReady a temporary condition."
 ```
@@ -80,7 +76,7 @@ spec:
 - ✅ **No LLM configuration needed** - Agent uses its own model
 - ✅ **Structured outputs** - Agent returns guaranteed JSON format
 - ✅ **Agent fetches logs** - Uses Kubernetes tools autonomously
-- ✅ **No API keys in plugin** - Only GitHub token needed for issue creation
+- ✅ **No API keys in plugin** - Agent handles GitHub integration via its own tools
 
 ### Prerequisites
 

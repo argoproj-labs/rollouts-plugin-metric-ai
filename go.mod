@@ -6,7 +6,6 @@ toolchain go1.24.3
 
 require (
 	github.com/argoproj/argo-rollouts v1.8.0
-	github.com/google/go-github/v60 v60.0.0
 	github.com/hashicorp/go-plugin v1.6.2
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
@@ -35,7 +34,6 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/pprof v0.0.0-20241029153458-d1b30febd7db // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-hclog v0.14.1 // indirect
