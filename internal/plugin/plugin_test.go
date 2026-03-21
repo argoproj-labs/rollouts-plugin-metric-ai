@@ -58,7 +58,7 @@ func TestRun_ParsesConfigAndReturnsResult(t *testing.T) {
 	}
 }
 
-func TestRun_FailureCreatesIssue(t *testing.T) {
+func TestRun_FailureMarksMeasurementFailed(t *testing.T) {
 	p := &RpcPlugin{}
 	analysisRun := &v1alpha1.AnalysisRun{}
 	analysisRun.Name = "test-analysis"

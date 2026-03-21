@@ -31,7 +31,7 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "VERSION=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "VERSION=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
           else
             echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
@@ -94,4 +94,4 @@ jobs:
             ### Changes
             - AI-powered metric analysis for canary deployments
             - Integration with Kubernetes agent for log analysis
-            - Support for GitHub issue creation on failures
+            - Optional `githubUrl` / `baseBranch` forwarded to the agent for GitHub remediation when the agent is configured with GitHub tools
