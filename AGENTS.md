@@ -245,11 +245,11 @@ kubectl logs -n argo-rollouts deployment/argo-rollouts | grep "plugin"
 ### API Key Issues
 
 ```bash
-# Verify secret exists
-kubectl get secret argo-rollouts -n argo-rollouts -o yaml
+# LLM and GitHub credentials are configured on kubernetes-agent, not read from a Secret
+# mounted into the rollouts controller by this plugin.
 
-# Check if secret is mounted
-kubectl describe pod -n argo-rollouts deployment/argo-rollouts | grep -A 5 "Mounts:"
+# Optional: you may still create Secret argo-rollouts from secret.yaml.template for other tooling.
+kubectl get secrets -n argo-rollouts
 ```
 
 ### Rate Limiting (429 Errors)
