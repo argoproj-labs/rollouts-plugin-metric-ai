@@ -34,7 +34,6 @@ func test() {
 
 const ProviderType = "MetricAI"
 
-
 // RpcPlugin implements the metric provider RPC interface
 type RpcPlugin struct {
 	LogCtx log.Entry
@@ -310,7 +309,7 @@ var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, 
 	})
 	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
-		logger.Error("Failed to list pods", err)
+		logger.WithError(err).Error("Failed to list pods")
 		return "", fmt.Errorf("failed to list pods for selector %s in namespace %s: %w", labelSelector, namespace, err)
 	}
 	if len(pods.Items) == 0 {
@@ -318,8 +317,9 @@ var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, 
 		return "", errors.NewNotFound(schema.GroupResource{Group: "", Resource: "pods"}, labelSelector)
 	}
 	pod := pods.Items[0]
-	
-	// Find the application container
+
+	// Prefer a non-Istio workload container when resolving pod logs (service mesh sidecars).
+	// Other meshes may use different sidecar names; extend the skip list if you hit the wrong container.
 	containerName := ""
 	for _, container := range pod.Spec.Containers {
 		if container.Name != "istio-proxy" && container.Name != "istio-init" {
@@ -327,27 +327,27 @@ var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, 
 			break
 		}
 	}
-	
+
 	// If no app container found, use the first container
 	if containerName == "" && len(pod.Spec.Containers) > 0 {
 		containerName = pod.Spec.Containers[0].Name
 	}
-	
+
 	logger.WithFields(log.Fields{
 		"podName":       pod.Name,
 		"containerName": containerName,
 	}).Info("Fetching logs from container")
-	
+
 	podLogOpts := &corev1.PodLogOptions{
 		Container: containerName,
 	}
 	req := client.CoreV1().Pods(namespace).GetLogs(pod.Name, podLogOpts)
 	bytes, err := req.DoRaw(ctx)
 	if err != nil {
-		logger.WithFields(log.Fields{
+		logger.WithError(err).WithFields(log.Fields{
 			"podName":       pod.Name,
 			"containerName": containerName,
-		}).Error("Failed to fetch logs for pod", err)
+		}).Error("Failed to fetch logs for pod")
 		return "", fmt.Errorf("failed to fetch logs for pod %s container %s in namespace %s: %w", pod.Name, containerName, namespace, err)
 	}
 	return string(bytes), nil

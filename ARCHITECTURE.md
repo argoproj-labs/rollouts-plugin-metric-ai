@@ -81,8 +81,7 @@ graph TB
             end
             
             subgraph "Rollouts Plugin Metric AI"
-                PluginPod[Plugin Pod<br/>🔌 Go gRPC Server]
-                PluginSecret[Secret: argo-rollouts<br/>🔑 API Keys & Tokens]
+                PluginPod[Argo Rollouts controller<br/>🔌 metric plugin binary]
             end
             
             subgraph "Kubernetes AI Agent"
@@ -137,10 +136,6 @@ graph TB
     AgentPod -->|search issues| GoogleSearch
     AgentPod -->|create PR| GitHubAPI
     
-    %% Secret Usage
-    PluginSecret -.->|env vars| PluginPod
-    PluginSecret -.->|env vars| AgentPod
-    
     %% Infrastructure
     K8sAPI -.->|manages| StablePods
     K8sAPI -.->|manages| CanaryPods
@@ -159,7 +154,6 @@ graph TB
     style AgentPod fill:#ff6f00,color:#fff
     style GitHub fill:#24292e,color:#fff
     style GeminiAPI fill:#4285f4,color:#fff
-    style PluginSecret fill:#ffd54f
     style K8sAPI fill:#326ce5,color:#fff
     
     classDef stable fill:#4caf50,color:#fff
