@@ -39,19 +39,6 @@ patches:
       value:
         name: LOG_LEVEL
         value: "debug"
-    # mount secrets as files
-    - op: add
-      path: /spec/template/spec/volumes/-
-      value:
-        name: secrets
-        secret:
-          secretName: argo-rollouts
-    - op: add
-      path: /spec/template/spec/containers/0/volumeMounts/-
-      value:
-        name: secrets
-        mountPath: /etc/secrets
-        readOnly: true
   target:
     kind: Deployment
     name: argo-rollouts
