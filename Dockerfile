@@ -1,3 +1,6 @@
+ARG ROLLOUTS_VERSION=v1.9.0
+ARG ROLLOUTS_DIGEST=sha256:13346024500167f71815e1dcd7671f46378137e726ef03b2baf69a188224f813
+
 # Build the manager binary
 FROM golang:1.25@sha256:8305f5fa8ea63c7b5bc85bd223ccc62941f852318ebfbd22f53bbd0b358c07e1 AS builder
 ARG TARGETOS
@@ -22,7 +25,7 @@ COPY internal/ internal/
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager main.go
 
-FROM quay.io/argoproj/argo-rollouts:v1.9.0@sha256:13346024500167f71815e1dcd7671f46378137e726ef03b2baf69a188224f813
+FROM quay.io/argoproj/argo-rollouts:${ROLLOUTS_VERSION}@${ROLLOUTS_DIGEST}
 COPY --from=builder /workspace/manager /home/argo-rollouts/rollouts-plugin-metric-ai
 # USER 65532:65532
 
