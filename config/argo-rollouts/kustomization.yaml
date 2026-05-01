@@ -4,7 +4,7 @@ images:
 - name: quay.io/argoproj/argo-rollouts
   newName: ghcr.io/argoproj-labs/rollouts-plugin-metric-ai
   newTag: latest
-# downloaded from https://github.com/argoproj/argo-rollouts/releases/download/v1.8.3/install.yaml
+# downloaded from https://github.com/argoproj/argo-rollouts/releases/download/v1.9.0/install.yaml
 resources:
 - install.yaml
 - secret.yaml

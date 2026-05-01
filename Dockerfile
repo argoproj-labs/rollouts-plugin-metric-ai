@@ -22,7 +22,7 @@ COPY internal/ internal/
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager main.go
 
-FROM quay.io/argoproj/argo-rollouts:v1.8.3@sha256:2b7be18bd6a3ce627ce0ed63d49e9166720c0b3409404266bbadabd15474d28a
+FROM quay.io/argoproj/argo-rollouts:v1.9.0@sha256:13346024500167f71815e1dcd7671f46378137e726ef03b2baf69a188224f813
 COPY --from=builder /workspace/manager /home/argo-rollouts/rollouts-plugin-metric-ai
 # USER 65532:65532
 
