@@ -2,6 +2,3 @@ bin/
 vendor/
 cover.out
 .env
-
-# Generated secret files
-secret.yaml

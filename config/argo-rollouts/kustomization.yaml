@@ -7,7 +7,6 @@ images:
 # downloaded from https://github.com/argoproj/argo-rollouts/releases/download/v1.9.0/install.yaml
 resources:
 - install.yaml
-- secret.yaml
 namespace: argo-rollouts
 patches:
 - patch: |

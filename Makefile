@@ -46,7 +46,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	# $(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
-generate: controller-gen config/argo-rollouts/secret.yaml ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 .PHONY: fmt
@@ -84,22 +84,6 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
 
-.PHONY: config/argo-rollouts/secret.yaml
-config/argo-rollouts/secret.yaml: config/argo-rollouts/secret.yaml.template
-	@if [ ! -f .env ]; then \
-		echo "⚠️  Warning: .env file not found. Using environment variables directly."; \
-	else \
-		echo "Loading environment variables from .env file..."; \
-		export $$(grep -v '^#' .env | xargs); \
-	fi; \
-	if [ -z "$$GOOGLE_API_KEY" ]; then \
-		echo "⚠️  Warning: GOOGLE_API_KEY not set"; \
-	fi; \
-	if [ -z "$$GITHUB_TOKEN" ]; then \
-		echo "⚠️  Warning: GITHUB_TOKEN not set"; \
-	fi; \
-	echo "Generating secret from environment variables..."; \
-	GOOGLE_CLOUD_PROJECT=$$(gcloud config get-value project 2>/dev/null || echo "") envsubst < config/argo-rollouts/secret.yaml.template > config/argo-rollouts/secret.yaml
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
