@@ -29,6 +29,16 @@ Common targets:
 - `make vet` - Run Go vet
 - `make lint` - Run linter
 
+## Git Workflow
+
+All commits must be signed off to certify the [Developer Certificate of Origin (DCO)](https://developercertificate.org/). Use the `-s` flag when committing:
+
+```bash
+git commit -s -m "feat: my change"
+```
+
+This adds a `Signed-off-by: Name <email>` trailer to the commit message. PRs with unsigned commits will fail the DCO check.
+
 ## 1. Build the Plugin Image
 
 Build the Docker image for the plugin using Make:

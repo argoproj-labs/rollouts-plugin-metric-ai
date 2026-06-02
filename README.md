@@ -85,44 +85,29 @@ No LLM configuration needed in the plugin. The agent handles its own model confi
 
 ### Architecture
 
-```
-┌─────────────────┐
-│ Argo Rollouts   │
-│   Controller    │
-└────────┬────────┘
-         │
-         │ 1. AnalysisRun
-         ▼
-┌─────────────────┐
-│ Plugin (Go)     │
-│ - Collect ctx   │
-│ - Send A2A req  │
-└────────┬────────┘
-         │
-         │ 2. HTTP POST /a2a/analyze
-         ▼
-┌─────────────────────────────────────┐
-│ Kubernetes Agent (example)          │
-│ ┌─────────────────────────────────┐ │
-│ │ 3. Diagnostic Agents            │ │
-│ │    - Fetch logs, events, metrics│ │
-│ └─────────────────────────────────┘ │
-│ ┌─────────────────────────────────┐ │
-│ │ 4. Analysis Agent (AI)          │ │
-│ │    - Log & Metrics analysis     │ │
-│ │    - Root cause identification  │ │
-│ └─────────────────────────────────┘ │
-└────────┬────────────────────────┬───┘
-         │                        │
-         │ 5. Return decision     │ 7. Async remediation
-         │    (promote/rollback)  │
-         ▼                        ▼
-┌─────────────────┐      ┌─────────────────┐
-│ Plugin          │      │ Remediation     │
-│ 6. Promote or   │      │ Agent           │
-│    abort canary │      │ - Create GitHub │
-└─────────────────┘      │   PRs/Issues.   │
-                         └─────────────────┘
+```mermaid
+flowchart TD
+    ArgoRollouts["Argo Rollouts<br/>Controller"]
+
+    subgraph Plugin["Plugin (Go)"]
+        CollectCtx["Collect context"]
+        SendA2A["Send A2A request"]
+        CollectCtx --> SendA2A
+    end
+
+    subgraph KubeAgent["Kubernetes Agent"]
+        DiagAgents["3. Diagnostic Agents<br/>Fetch logs, events, metrics"]
+        AnalysisAgent["4. Analysis Agent (AI)<br/>Log & Metrics analysis<br/>Root cause identification"]
+        DiagAgents --> AnalysisAgent
+    end
+
+    Decision["Plugin<br/>Promote or abort canary"]
+    RemediationAgent["Remediation Agent<br/>Create GitHub PRs / Issues"]
+
+    ArgoRollouts -->|"1. AnalysisRun"| Plugin
+    Plugin -->|"2. HTTP POST /a2a/analyze"| KubeAgent
+    KubeAgent -->|"5. Return decision (promote/rollback)"| Decision
+    KubeAgent -.->|"7. Async remediation"| RemediationAgent
 ```
 
 ## Prerequisites
