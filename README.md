@@ -86,28 +86,34 @@ No LLM configuration needed in the plugin. The agent handles its own model confi
 ### Architecture
 
 ```mermaid
-flowchart TD
-    ArgoRollouts["Argo Rollouts<br/>Controller"]
-
-    subgraph Plugin["Plugin (Go)"]
-        CollectCtx["Collect context"]
-        SendA2A["Send A2A request"]
-        CollectCtx --> SendA2A
+sequenceDiagram
+    box rgb(74,144,217) Argo Rollouts
+        participant AC as Controller
+    end
+    box rgb(91,168,90) Plugin
+        participant P as Plugin
+    end
+    box rgb(139,92,246) Kubernetes Agents
+        participant KA as Agent
+        participant DA as Diagnostic Agent
+        participant AA as Analysis Agent
+        participant RA as Remediation Agent
+    end
+    box rgb(36,41,47) GitHub
+        participant GH as GitHub
     end
 
-    subgraph KubeAgent["Kubernetes Agent"]
-        DiagAgents["3. Diagnostic Agents<br/>Fetch logs, events, metrics"]
-        AnalysisAgent["4. Analysis Agent (AI)<br/>Log & Metrics analysis<br/>Root cause identification"]
-        DiagAgents --> AnalysisAgent
-    end
-
-    Decision["Plugin<br/>Promote or abort canary"]
-    RemediationAgent["Remediation Agent<br/>Create GitHub PRs / Issues"]
-
-    ArgoRollouts -->|"1. AnalysisRun"| Plugin
-    Plugin -->|"2. HTTP POST /a2a/analyze"| KubeAgent
-    KubeAgent -->|"5. Return decision (promote/rollback)"| Decision
-    KubeAgent -.->|"7. Async remediation"| RemediationAgent
+    AC->>P: AnalysisRun
+    P->>KA: HTTP POST /a2a/analyze
+    KA->>DA: Fetch logs, events, metrics
+    DA-->>KA: logs & metrics
+    KA->>AA: Analyze logs & metrics
+    AA-->>KA: Root cause identification
+    KA-->>P: Return decision (promote/rollback)
+    P-->>AC: Promote or abort canary
+    KA-)GH: Create GitHub Issue
+    KA-)RA: Ask for remediation
+    RA-)GH: Create GitHub PR
 ```
 
 ## Prerequisites
