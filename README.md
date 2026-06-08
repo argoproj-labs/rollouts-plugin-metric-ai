@@ -96,6 +96,7 @@ sequenceDiagram
     box rgb(139,92,246) Kubernetes Agents
         participant KA as Agent
         participant DA as Diagnostic Agent
+        participant MA as Metrics Agent
         participant AA as Analysis Agent
         participant RA as Remediation Agent
     end
@@ -105,15 +106,23 @@ sequenceDiagram
 
     AC->>P: AnalysisRun
     P->>KA: HTTP POST /a2a/analyze
-    KA->>DA: Fetch logs, events, metrics
-    DA-->>KA: logs & metrics
-    KA->>AA: Analyze logs & metrics
+    par Collect diagnostics
+        KA->>DA: Fetch logs & pod details
+        DA-->>KA: logs & pod details
+    and Collect metrics
+        KA->>MA: Fetch metrics
+        MA-->>KA: metrics
+    end
+    KA->>AA: Analyze logs, pod details & metrics
     AA-->>KA: Root cause identification
     KA-->>P: Return decision (promote/rollback)
     P-->>AC: Promote or abort canary
-    KA-)GH: Create GitHub Issue
-    KA-)RA: Ask for remediation
-    RA-)GH: Create GitHub PR
+    KA-)RA: Ask for remediation (if needed)
+    alt Operational issue
+        RA-)GH: Create GitHub Issue
+    else Coding issue
+        RA-)GH: Create GitHub PR
+    end
 ```
 
 ## Prerequisites
