@@ -316,7 +316,21 @@ var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, 
 		logger.Error("No pods found for selector")
 		return "", errors.NewNotFound(schema.GroupResource{Group: "", Resource: "pods"}, labelSelector)
 	}
-	pod := pods.Items[0]
+	
+	// Skip terminating pods (those with DeletionTimestamp set)
+	var pod corev1.Pod
+	found := false
+	for _, p := range pods.Items {
+		if p.DeletionTimestamp == nil {
+			pod = p
+			found = true
+			break
+		}
+	}
+	if !found {
+		// Fallback to the first pod if all are terminating
+		pod = pods.Items[0]
+	}
 
 	// Prefer a non-Istio workload container when resolving pod logs (service mesh sidecars).
 	// Other meshes may use different sidecar names; extend the skip list if you hit the wrong container.
