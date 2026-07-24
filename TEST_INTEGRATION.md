@@ -8,10 +8,10 @@ The project includes integration tests that make real API calls to Google Gemini
 
 ### Prerequisites
 
-1. **Google API Key**: You need a valid Google Gemini API key
+1. **API Key**: You need a valid API key for any OpenAI-compatible endpoint
 2. **Set Environment Variable**:
    ```bash
-   export GOOGLE_API_KEY="your-api-key-here"
+   export ANALYSIS_API_KEY="your-api-key-here"
    ```
 
 ### Run All Integration Tests
