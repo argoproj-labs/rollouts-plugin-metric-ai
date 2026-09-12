@@ -1,3 +1,5 @@
+Watch a recording from KubeCon Japan that explains this plugin: https://youtu.be/FH_fNfE90sU?si=QvJ0hkNwCMPi1SO8
+
 ## rollouts-plugin-metric-ai
 
 Argo Rollouts metric provider plugin written in Go. Collects stable/canary pod logs and delegates AI analysis to an A2A agent. The agent fetches logs autonomously and can create GitHub issues/PRs when configured.
