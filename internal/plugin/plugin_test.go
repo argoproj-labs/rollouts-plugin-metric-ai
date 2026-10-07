@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	v1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -102,6 +104,52 @@ func TestRun_FailureMarksMeasurementFailed(t *testing.T) {
 	}
 	if measurement.Value != "0" {
 		t.Fatalf("expected value '0', got '%s'", measurement.Value)
+	}
+}
+
+func TestRun_MissingCanaryPodsMarksMeasurementError(t *testing.T) {
+	p := &RpcPlugin{}
+	analysisRun := &v1alpha1.AnalysisRun{}
+	analysisRun.Name = "test-analysis"
+	analysisRun.Namespace = "default"
+
+	cfg := aiConfig{AgentURL: "http://localhost:8080"}
+	b, _ := json.Marshal(cfg)
+
+	metric := v1alpha1.Metric{
+		Name: "ai-test",
+		Provider: v1alpha1.MetricProvider{
+			Plugin: map[string]json.RawMessage{
+				"argoproj-labs/metric-ai": b,
+			},
+		},
+	}
+
+	// The agent must not be called when canary pods are missing
+	old := analyzeWithAgent
+	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string) (string, AIAnalysisResult, error) {
+		t.Fatal("agent should not be called when canary pods are missing")
+		return "", AIAnalysisResult{}, nil
+	}
+	t.Cleanup(func() { analyzeWithAgent = old })
+
+	// Stub kube access
+	oldKC := acquireKubeClient
+	acquireKubeClient = func() (*kubernetes.Clientset, error) { return nil, nil }
+	t.Cleanup(func() { acquireKubeClient = oldKC })
+
+	oldLogs := readFirstPodLogs
+	readFirstPodLogs = func(ctx context.Context, _ *kubernetes.Clientset, _ string, selector string) (string, error) {
+		if selector == "role=canary" {
+			return "", errors.NewNotFound(schema.GroupResource{Resource: "pods"}, selector)
+		}
+		return "dummy", nil
+	}
+	t.Cleanup(func() { readFirstPodLogs = oldLogs })
+
+	measurement := p.Run(analysisRun, metric)
+	if measurement.Phase != v1alpha1.AnalysisPhaseError {
+		t.Fatalf("expected error, got %s", measurement.Phase)
 	}
 }
 

@@ -136,14 +136,6 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 
 	canaryLogs, err := readFirstPodLogs(context.Background(), kubeClient, ns, canarySelector)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			log.WithError(err).Warn("Canary pods not found, marking as successful")
-			newMeasurement.Value = "1"
-			newMeasurement.Phase = v1alpha1.AnalysisPhaseSuccessful
-			finishedTime := metav1.Now()
-			newMeasurement.FinishedAt = &finishedTime
-			return newMeasurement
-		}
 		log.WithError(err).Error("Failed to fetch canary pod logs")
 		return markMeasurementError(newMeasurement, err)
 	}
