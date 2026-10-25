@@ -107,6 +107,8 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 	// Include the uncertainty pause gate when enabled
 	if pauseOnUncertainty {
 		req.Context["pauseOnUncertainty"] = true
+		// 0 is the "not set" sentinel (omitempty on the config struct), so it is
+		// omitted and the agent applies its own default threshold
 		if uncertaintyThreshold > 0 {
 			req.Context["uncertaintyThreshold"] = uncertaintyThreshold
 		}

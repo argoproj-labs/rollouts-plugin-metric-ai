@@ -12,11 +12,12 @@ import (
 // Declared as a variable to allow test stubbing
 var analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (string, AIAnalysisResult, error) {
 	log.WithFields(log.Fields{
-		"namespace":          namespace,
-		"rolloutName":        rolloutName,
-		"githubUrl":          githubUrl,
-		"baseBranch":         baseBranch,
-		"pauseOnUncertainty": pauseOnUncertainty,
+		"namespace":            namespace,
+		"rolloutName":          rolloutName,
+		"githubUrl":            githubUrl,
+		"baseBranch":           baseBranch,
+		"pauseOnUncertainty":   pauseOnUncertainty,
+		"uncertaintyThreshold": uncertaintyThreshold,
 	}).Info("Delegating analysis to Kubernetes Agent")
 
 	return analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch, pauseOnUncertainty, uncertaintyThreshold)

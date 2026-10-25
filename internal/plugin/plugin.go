@@ -18,19 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-
-	// force vendoring
-	"github.com/argoproj/argo-rollouts/rollout/steps/plugin"
-	analysisutil "github.com/argoproj/argo-rollouts/utils/analysis"
 )
-
-// TODO remove
-func test() {
-	var x *plugin.StepPlugin
-	fmt.Println("x", x)
-	// _ = c.TestControllers()
-	_ = analysisutil.CurrentAnalysisRuns{}
-}
 
 const ProviderType = "MetricAI"
 
