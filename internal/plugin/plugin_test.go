@@ -31,7 +31,7 @@ func TestRun_ParsesConfigAndReturnsResult(t *testing.T) {
 
 	// Override agent analysis call to avoid external dependency
 	old := analyzeWithAgent
-	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string) (string, AIAnalysisResult, error) {
+	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (string, AIAnalysisResult, error) {
 		return `{"text":"ok","promote":true,"confidence":100}`, AIAnalysisResult{Text: "ok", Promote: true, Confidence: 100}, nil
 	}
 	t.Cleanup(func() { analyzeWithAgent = old })
@@ -82,7 +82,7 @@ func TestRun_FailureMarksMeasurementFailed(t *testing.T) {
 
 	// Override agent analysis call to return failure
 	old := analyzeWithAgent
-	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string) (string, AIAnalysisResult, error) {
+	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (string, AIAnalysisResult, error) {
 		return `{"text":"canary is bad","promote":false,"confidence":90}`, AIAnalysisResult{Text: "canary is bad", Promote: false, Confidence: 90}, nil
 	}
 	t.Cleanup(func() { analyzeWithAgent = old })
@@ -127,7 +127,7 @@ func TestRun_MissingCanaryPodsMarksMeasurementError(t *testing.T) {
 
 	// The agent must not be called when canary pods are missing
 	old := analyzeWithAgent
-	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string) (string, AIAnalysisResult, error) {
+	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (string, AIAnalysisResult, error) {
 		t.Fatal("agent should not be called when canary pods are missing")
 		return "", AIAnalysisResult{}, nil
 	}
@@ -150,6 +150,64 @@ func TestRun_MissingCanaryPodsMarksMeasurementError(t *testing.T) {
 	measurement := p.Run(analysisRun, metric)
 	if measurement.Phase != v1alpha1.AnalysisPhaseError {
 		t.Fatalf("expected error, got %s", measurement.Phase)
+	}
+}
+
+func TestRun_UncertaintyGatePassthrough(t *testing.T) {
+	p := &RpcPlugin{}
+	analysisRun := &v1alpha1.AnalysisRun{}
+	analysisRun.Name = "test-analysis"
+	analysisRun.Namespace = "default"
+
+	cfg := aiConfig{
+		AgentURL:             "http://localhost:8080",
+		PauseOnUncertainty:   true,
+		UncertaintyThreshold: 60,
+	}
+	b, _ := json.Marshal(cfg)
+
+	metric := v1alpha1.Metric{
+		Name: "ai-test",
+		Provider: v1alpha1.MetricProvider{
+			Plugin: map[string]json.RawMessage{
+				"argoproj-labs/metric-ai": b,
+			},
+		},
+	}
+
+	var gotPause bool
+	var gotThreshold int
+	old := analyzeWithAgent
+	analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (string, AIAnalysisResult, error) {
+		gotPause = pauseOnUncertainty
+		gotThreshold = uncertaintyThreshold
+		return `{"text":"ok","promote":true,"confidence":55,"pausedRollout":"quarkus-demo"}`,
+			AIAnalysisResult{Text: "ok", Promote: true, Confidence: 55, PausedRollout: "quarkus-demo"}, nil
+	}
+	t.Cleanup(func() { analyzeWithAgent = old })
+
+	// Stub kube access
+	oldKC := acquireKubeClient
+	acquireKubeClient = func() (*kubernetes.Clientset, error) { return nil, nil }
+	t.Cleanup(func() { acquireKubeClient = oldKC })
+
+	oldLogs := readFirstPodLogs
+	readFirstPodLogs = func(ctx context.Context, _ *kubernetes.Clientset, _ string, _ string) (string, error) {
+		return "dummy", nil
+	}
+	t.Cleanup(func() { readFirstPodLogs = oldLogs })
+
+	measurement := p.Run(analysisRun, metric)
+
+	// The pause holds the rollout; the measurement itself stays successful
+	if measurement.Phase != v1alpha1.AnalysisPhaseSuccessful {
+		t.Fatalf("expected successful (pause holds, not abort), got %s", measurement.Phase)
+	}
+	if !gotPause || gotThreshold != 60 {
+		t.Fatalf("expected gate settings to pass through, got pause=%v threshold=%d", gotPause, gotThreshold)
+	}
+	if measurement.Metadata["pausedRollout"] != "quarkus-demo" {
+		t.Fatalf("expected pausedRollout metadata, got '%s'", measurement.Metadata["pausedRollout"])
 	}
 }
 

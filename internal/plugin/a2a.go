@@ -33,6 +33,8 @@ type A2AResponse struct {
 	PRLink      string `json:"prLink,omitempty"`
 	Promote     bool   `json:"promote"`
 	Confidence  int    `json:"confidence"`
+	// Rollout paused for human review by the uncertainty gate, if any
+	PausedRollout string `json:"pausedRollout,omitempty"`
 
 	// Multi-model fields
 	ModelResults    []ModelAnalysisResult `json:"modelResults,omitempty"`
@@ -51,7 +53,7 @@ func NewA2AClient(baseURL string) *A2AClient {
 
 // AnalyzeWithAgent sends analysis request to Kubernetes Agent
 // In agent mode, send pod selectors instead of logs - let the agent fetch logs using its tools
-func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt, githubUrl, baseBranch string) (*A2AResponse, error) {
+func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (*A2AResponse, error) {
 	log.WithFields(log.Fields{
 		"namespace":      namespace,
 		"rolloutName":    rolloutName,
@@ -100,6 +102,14 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 	}
 	if baseBranch != "" {
 		req.Context["baseBranch"] = baseBranch
+	}
+
+	// Include the uncertainty pause gate when enabled
+	if pauseOnUncertainty {
+		req.Context["pauseOnUncertainty"] = true
+		if uncertaintyThreshold > 0 {
+			req.Context["uncertaintyThreshold"] = uncertaintyThreshold
+		}
 	}
 
 	body, err := json.Marshal(req)

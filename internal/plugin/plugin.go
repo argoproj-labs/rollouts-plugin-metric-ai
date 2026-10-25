@@ -67,6 +67,10 @@ type aiConfig struct {
 	GitHubURL string `json:"githubUrl,omitempty"`
 	// Base branch for GitHub PRs
 	BaseBranch string `json:"baseBranch,omitempty"`
+	// Pause the rollout for human review when the agent promotes with
+	// confidence below the threshold (optional, default off)
+	PauseOnUncertainty   bool `json:"pauseOnUncertainty,omitempty"`
+	UncertaintyThreshold int  `json:"uncertaintyThreshold,omitempty"`
 }
 
 func (g *RpcPlugin) InitPlugin() types.RpcError {
@@ -159,7 +163,7 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"githubUrl":   cfg.GitHubURL,
 		"baseBranch":  cfg.BaseBranch,
 	}).Info("Starting A2A agent analysis")
-	analysisJSON, result, aiErr := analyzeWithAgent(ns, rolloutName, stableSelector, canarySelector, cfg.AgentURL, cfg.ExtraPrompt, cfg.GitHubURL, cfg.BaseBranch)
+	analysisJSON, result, aiErr := analyzeWithAgent(ns, rolloutName, stableSelector, canarySelector, cfg.AgentURL, cfg.ExtraPrompt, cfg.GitHubURL, cfg.BaseBranch, cfg.PauseOnUncertainty, cfg.UncertaintyThreshold)
 	if aiErr != nil {
 		log.WithError(aiErr).Error("A2A agent analysis failed")
 		return markMeasurementError(newMeasurement, aiErr)
@@ -178,6 +182,11 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 	newMeasurement.Metadata["analysis"] = result.Text
 	newMeasurement.Metadata["analysisJSON"] = analysisJSON
 	newMeasurement.Metadata["confidence"] = fmt.Sprintf("%d", result.Confidence)
+
+	if result.PausedRollout != "" {
+		newMeasurement.Metadata["pausedRollout"] = result.PausedRollout
+		log.WithField("pausedRollout", result.PausedRollout).Info("Rollout paused for human review by the uncertainty gate")
+	}
 
 	// Store multi-model results if available
 	if len(result.ModelResults) > 0 {
@@ -308,7 +317,7 @@ var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, 
 		logger.Error("No pods found for selector")
 		return "", errors.NewNotFound(schema.GroupResource{Group: "", Resource: "pods"}, labelSelector)
 	}
-	
+
 	// Skip terminating pods (those with DeletionTimestamp set)
 	var pod corev1.Pod
 	found := false

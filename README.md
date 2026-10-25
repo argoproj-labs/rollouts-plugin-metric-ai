@@ -152,6 +152,8 @@ No fallback mode exists.
 | `githubUrl` | string | No | GitHub repository URL for issue creation |
 | `baseBranch` | string | No | Git base branch for issue creation |
 | `extraPrompt` | string | No | Additional context for AI analysis |
+| `pauseOnUncertainty` | bool | No | Pause the rollout for human review when the agent promotes with confidence below the threshold (default `false`) |
+| `uncertaintyThreshold` | int | No | Confidence threshold for the pause gate, 0-100 (default `50`) |
 
 Namespace is auto-detected from AnalysisRun.
 
