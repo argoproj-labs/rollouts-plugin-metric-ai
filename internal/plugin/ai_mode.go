@@ -10,19 +10,20 @@ import (
 // analyzeWithAgent delegates all analysis to the Kubernetes Agent via A2A
 // This is now the only analysis method - no direct LLM calls
 // Declared as a variable to allow test stubbing
-var analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string) (string, AIAnalysisResult, error) {
+var analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (string, AIAnalysisResult, error) {
 	log.WithFields(log.Fields{
-		"namespace":   namespace,
-		"rolloutName": rolloutName,
-		"githubUrl":   githubUrl,
-		"baseBranch":  baseBranch,
+		"namespace":          namespace,
+		"rolloutName":        rolloutName,
+		"githubUrl":          githubUrl,
+		"baseBranch":         baseBranch,
+		"pauseOnUncertainty": pauseOnUncertainty,
 	}).Info("Delegating analysis to Kubernetes Agent")
 
-	return analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch)
+	return analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch, pauseOnUncertainty, uncertaintyThreshold)
 }
 
 // analyzeWithKubernetesAgent delegates analysis to the Kubernetes Agent via A2A
-func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string) (string, AIAnalysisResult, error) {
+func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (string, AIAnalysisResult, error) {
 	// Agent URL must be explicitly configured in the AnalysisTemplate
 	if agentURL == "" {
 		return "", AIAnalysisResult{}, fmt.Errorf("agent mode requires agentUrl to be configured in the AnalysisTemplate")
@@ -49,7 +50,7 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 	}).Info("Agent mode: letting agent fetch logs using its own tools")
 
 	// Send request to agent with pod selectors (no logs)
-	resp, err := client.AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt, githubUrl, baseBranch)
+	resp, err := client.AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt, githubUrl, baseBranch, pauseOnUncertainty, uncertaintyThreshold)
 	if err != nil {
 		log.WithError(err).Error("Failed to analyze with kubernetes-agent")
 		return "", AIAnalysisResult{}, err
@@ -57,9 +58,10 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 
 	// Build result object
 	result := AIAnalysisResult{
-		Text:       resp.Analysis,
-		Promote:    resp.Promote,
-		Confidence: resp.Confidence,
+		Text:          resp.Analysis,
+		Promote:       resp.Promote,
+		Confidence:    resp.Confidence,
+		PausedRollout: resp.PausedRollout,
 
 		// Multi-model fields
 		ModelResults:    convertModelResults(resp.ModelResults),
@@ -77,6 +79,9 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 	if resp.PRLink != "" {
 		jsonResp["prLink"] = resp.PRLink
 		log.WithField("prLink", resp.PRLink).Info("Agent created a PR with fix")
+	}
+	if resp.PausedRollout != "" {
+		jsonResp["pausedRollout"] = resp.PausedRollout
 	}
 
 	rawJSON, err := json.Marshal(jsonResp)

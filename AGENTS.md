@@ -62,7 +62,7 @@ kubectl exec -n argo-rollouts deployment/argo-rollouts -- ls -la /home/argo-roll
 
 `Run()` in [`internal/plugin/plugin.go`](internal/plugin/plugin.go) is the main entry point called by Argo Rollouts during an analysis step. It:
 
-1. Parses the `AnalysisRun` metric config (`agentUrl`, `stableLabel`, `canaryLabel`, `extraPrompt`, `githubUrl`, `baseBranch`).
+1. Parses the `AnalysisRun` metric config (`agentUrl`, `stableLabel`, `canaryLabel`, `extraPrompt`, `githubUrl`, `baseBranch`, `pauseOnUncertainty`, `uncertaintyThreshold`).
 2. Fetches pod logs for stable and canary pods using the in-cluster Kubernetes client.
 3. Calls `analyzeWithKubernetesAgent()`, which POSTs to the agent's `/a2a/analyze` endpoint.
 4. Returns a `Measurement` with `Phase: Successful` (promote) or `Phase: Failed` (rollback).
