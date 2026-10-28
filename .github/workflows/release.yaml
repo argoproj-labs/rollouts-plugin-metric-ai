@@ -70,6 +70,7 @@ jobs:
           name: Release ${{ steps.version.outputs.VERSION }}
           draft: false
           prerelease: false
+          generate_release_notes: true
           files: |
             rollouts-plugin-metric-ai-linux-amd64
           body: |

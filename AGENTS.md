@@ -116,6 +116,7 @@ The plugin carries no credentials. All AI keys (`OPENAI_API_KEY`, `GOOGLE_API_KE
 ## Documentation Standards
 
 - Update `README.md` and `ARCHITECTURE.md` when behaviour changes.
+- Document features without naming release versions or adding unreleased markers; both go stale once a tag is cut. The README documents `main`, and the release workflow generates release notes that list what each version contains. The install example URL in `README.md` is the one exception and is updated with each release.
 - Professional tone, plain English, no AI-sounding phrasing.
 - No "Made with Bob" comments.
 
