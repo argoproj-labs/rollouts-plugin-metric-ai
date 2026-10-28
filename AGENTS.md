@@ -113,6 +113,10 @@ The plugin carries no credentials. All AI keys (`OPENAI_API_KEY`, `GOOGLE_API_KE
 | 429 errors | Rate limit on the agent/LLM side; check agent logs |
 | Architecture mismatch on Kind | Rebuild with `make docker-build PLATFORMS=linux/arm64` or `linux/amd64` to match cluster |
 
+## Commits
+
+Every commit needs a `Signed-off-by` line — the DCO app rejects PRs without it. Always commit with `git commit -s`.
+
 ## Documentation Standards
 
 - Update `README.md` and `ARCHITECTURE.md` when behaviour changes.
