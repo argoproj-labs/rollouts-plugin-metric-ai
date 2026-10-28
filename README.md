@@ -28,10 +28,10 @@ spec:
   plugins:
     metric:
       - name: argoproj-labs/metric-ai
-        location: https://github.com/argoproj-labs/rollouts-plugin-metric-ai/releases/download/v1.9.0/rollouts-plugin-metric-ai-linux-amd64
+        location: https://github.com/argoproj-labs/rollouts-plugin-metric-ai/releases/download/v0.1.10/rollouts-plugin-metric-ai-linux-amd64
 ```
 
-Replace `v1.9.0` with the desired release version. See [releases](https://github.com/argoproj-labs/rollouts-plugin-metric-ai/releases) for available versions.
+Replace `v0.1.10` with the desired release version. See [releases](https://github.com/argoproj-labs/rollouts-plugin-metric-ai/releases) for available versions.
 
 This README documents the current `main` branch, so a released binary may not include the newest configuration fields. The release notes list the changes in each version.
 
