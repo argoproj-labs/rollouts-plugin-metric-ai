@@ -117,6 +117,10 @@ The plugin carries no credentials. All AI keys (`OPENAI_API_KEY`, `GOOGLE_API_KE
 
 Every commit needs a `Signed-off-by` line — the DCO app rejects PRs without it. Always commit with `git commit -s`.
 
+## Versioning
+
+Tags follow the plugin's own semver (`v0.1.x`, `v0.2.x`, ...) and do not track the Argo Rollouts version, which is pinned in `go.mod`. `v1.9.0` predates this rule and is kept for its published release URL.
+
 ## Documentation Standards
 
 - Update `README.md` and `ARCHITECTURE.md` when behaviour changes.
