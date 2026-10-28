@@ -113,9 +113,14 @@ The plugin carries no credentials. All AI keys (`OPENAI_API_KEY`, `GOOGLE_API_KE
 | 429 errors | Rate limit on the agent/LLM side; check agent logs |
 | Architecture mismatch on Kind | Rebuild with `make docker-build PLATFORMS=linux/arm64` or `linux/amd64` to match cluster |
 
+## Commits
+
+Every commit needs a `Signed-off-by` line — the DCO app rejects PRs without it. Always commit with `git commit -s`.
+
 ## Documentation Standards
 
 - Update `README.md` and `ARCHITECTURE.md` when behaviour changes.
+- Document features without naming release versions or adding unreleased markers; both go stale once a tag is cut. The README documents `main`, and the release workflow generates release notes that list what each version contains. The install example URL in `README.md` is the one exception and is updated with each release.
 - Professional tone, plain English, no AI-sounding phrasing.
 - No "Made with Bob" comments.
 
