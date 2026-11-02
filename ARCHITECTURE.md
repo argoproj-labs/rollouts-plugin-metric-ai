@@ -10,48 +10,31 @@ flowchart TD
     
     Analysis --> Plugin{Metric AI Plugin<br/>argoproj-labs/metric-ai}
     
-    Plugin --> Monitor[Monitor Metrics:<br/>- Success Rate<br/>- Error Count<br/>- Response Time]
-    
-    Monitor --> Threshold{Metrics<br/>Meet Threshold?}
-    
-    Threshold -->|Yes| Success[Return: Success<br/>Promote Canary]
-    Threshold -->|No| AIAnalysis[Call AI Mode<br/>Ask Gemini to analyze]
-    
-    AIAnalysis --> GatherData[Gather Context:<br/>- Pod logs<br/>- K8s events<br/>- Metrics data<br/>- Rollout info]
-    
-    GatherData --> DecideMode{AI Decision:<br/>Use Agent?}
-    
-    DecideMode -->|"Yes (complex)"| A2ACall[Agent-to-Agent Call<br/>POST /a2a/analyze]
-    DecideMode -->|"No (simple)"| DirectAI[Direct Gemini Analysis]
+    Plugin --> A2ACall[Single A2A call:<br/>POST /a2a/analyze<br/>with pod selectors]
     
     A2ACall --> K8sAgent[Kubernetes AI Agent<br/>in cluster]
     
-    K8sAgent --> AgentTools[Agent uses tools:<br/>1. debug_kubernetes_pod<br/>2. get_pod_logs<br/>3. get_kubernetes_events<br/>4. get_pod_metrics<br/>5. inspect_kubernetes_resources]
+    K8sAgent --> AgentTools[Agent uses tools:<br/>1. rollout status<br/>2. canary metrics<br/>3. canary diagnostics<br/>pod logs and events<br/>4. pause rollout]
     
-    AgentTools --> AgentAnalyze[Agent analyzes with<br/>Gemini 2.0 Flash]
+    AgentTools --> AgentAnalyze[Agent analyzes with<br/>the configured LLM]
     
-    AgentAnalyze --> SearchKnown[Search Google for<br/>known issues]
+    AgentAnalyze --> RootCause[Identify Root Cause]
     
-    SearchKnown --> RootCause[Identify Root Cause]
+    RootCause --> NeedsFix{Rollback with<br/>a repo configured?}
     
-    RootCause --> NeedsFix{Code Fix<br/>Needed?}
+    NeedsFix -->|Yes| Delegate[Delegate remediation over A2A<br/>runs in the background]
+    NeedsFix -->|No| Response
     
-    NeedsFix -->|Yes| CreatePR[create_github_pr tool:<br/>1. Clone repo<br/>2. Create branch<br/>3. Apply fixes<br/>4. Commit & push<br/>5. Create PR]
+    Delegate --> Remediation[Remediation agent sandbox:<br/>fix, verify with tests,<br/>open PR or issue]
+    Remediation --> PRLink[PR / issue link<br/>published via activity events]
+    PRLink --> Response
     
-    NeedsFix -->|No| Recommend[Provide<br/>Recommendations]
-    
-    CreatePR --> PRCreated[GitHub PR Created<br/>with analysis]
-    Recommend --> Response
-    PRCreated --> Response
-    
-    DirectAI --> Response[Return Analysis Response:<br/>- Root Cause<br/>- Promote Decision<br/>- Confidence Level<br/>- PR Link if created]
+    Response[Return Analysis Response:<br/>- Root Cause<br/>- Promote Decision<br/>- Confidence Level]
     
     Response --> PluginDecision{Plugin Decision}
     
     PluginDecision -->|Promote| Promote[Promote Canary<br/>to 100%]
     PluginDecision -->|Abort| Abort[Abort Rollout<br/>Rollback to Stable]
-    
-    Success --> Promote
     
     Promote --> Complete([Deployment Complete])
     Abort --> Complete
@@ -60,8 +43,9 @@ flowchart TD
     style Complete fill:#e1f5e1
     style K8sAgent fill:#fff3cd
     style Plugin fill:#d1ecf1
-    style CreatePR fill:#f8d7da
-    style PRCreated fill:#d4edda
+    style Delegate fill:#f8d7da
+    style Remediation fill:#f8d7da
+    style PRLink fill:#d4edda
     style AgentTools fill:#cfe2ff
 ```
 
@@ -72,42 +56,37 @@ This diagram shows all the components, services, and their interactions:
 ```mermaid
 graph TB
     subgraph "Kubernetes Cluster"
-        subgraph "Argo Rollouts Namespace"
-            ArgoController[Argo Rollouts Controller<br/>📦 Manages Canary]
-            
-            subgraph "Application Deployment"
-                StablePods[Stable Pods v1<br/>🟢 90% traffic]
-                CanaryPods[Canary Pods v2<br/>🟡 10% traffic]
-            end
-            
-            subgraph "Rollouts Plugin Metric AI"
-                PluginPod[Argo Rollouts controller<br/>🔌 metric plugin binary]
-            end
-            
-            subgraph "Kubernetes AI Agent"
-                AgentPod[Agent Pod<br/>🤖 Java ADK Server]
-                AgentService[Service: kubernetes-agent<br/>🌐 Port 8080]
-            end
+        subgraph "openshift-gitops"
+            ArgoController[Argo Rollouts Controller<br/>with metric-ai plugin]
+            AgentService[Service: kubernetes-agent<br/>Port 8080]
+            AgentPod[kubernetes-agent<br/>analysis, LLM, tools]
+            RemediationSvc[remediation-agent<br/>A2A remediation service]
+        end
+        
+        subgraph "Workload namespace, e.g. quarkus-demo"
+            StablePods[Stable Pods v1]
+            CanaryPods[Canary Pods v2]
+        end
+        
+        subgraph "remediation, sandbox namespace"
+            Sandbox[Sandbox pods<br/>coding agent, no cluster access]
         end
         
         subgraph "Infrastructure"
-            K8sAPI[Kubernetes API<br/>📡 Cluster Control]
-            MetricsServer[Metrics Server<br/>📊 Resource Metrics]
-            CoreDNS[CoreDNS<br/>🔍 Service Discovery]
+            K8sAPI[Kubernetes API]
+            MetricsServer[Metrics Server]
         end
     end
     
     subgraph "External Services"
-        GitHub[GitHub<br/>📝 Source Code]
-        GitHubAPI[GitHub API<br/>🔧 PR Creation]
-        GeminiAPI[Google Gemini API<br/>🧠 AI Analysis]
-        GoogleSearch[Google Search<br/>🔎 Known Issues]
+        GitHub[GitHub<br/>source, PRs, issues]
+        LLM[LLM API<br/>OpenAI-compatible or Gemini]
     end
     
     subgraph "Developer Workflow"
-        DevPush[Developer<br/>👨‍💻 Push Code]
-        CICD[CI/CD Pipeline<br/>⚙️ Build & Deploy]
-        PRReview[PR Review<br/>👀 Review Agent Fix]
+        DevPush[Developer<br/>push code]
+        CICD[CI/CD Pipeline<br/>build and deploy]
+        PRReview[PR Review<br/>review agent fix]
     end
     
     %% Deployment Flow
@@ -118,42 +97,38 @@ graph TB
     %% Canary Rollout Flow
     ArgoController -->|creates| StablePods
     ArgoController -->|creates| CanaryPods
-    ArgoController -->|triggers| PluginPod
     
     %% Plugin Analysis Flow
-    PluginPod -->|reads metrics| CanaryPods
-    PluginPod -->|queries| K8sAPI
-    PluginPod -->|calls API| GeminiAPI
-    PluginPod -->|A2A POST /a2a/analyze| AgentService
+    ArgoController -->|POST /a2a/analyze| AgentService
     
     %% Agent Operations
     AgentService --> AgentPod
-    AgentPod -->|queries| K8sAPI
+    AgentPod -->|queries, pauses| K8sAPI
+    AgentPod -->|get logs| StablePods
     AgentPod -->|get logs| CanaryPods
-    AgentPod -->|get events| K8sAPI
     AgentPod -->|get metrics| MetricsServer
-    AgentPod -->|AI analysis| GeminiAPI
-    AgentPod -->|search issues| GoogleSearch
-    AgentPod -->|create PR| GitHubAPI
+    AgentPod -->|LLM calls| LLM
+    AgentPod -->|async A2A after rollback| RemediationSvc
+    
+    %% Remediation Flow
+    RemediationSvc -->|creates| Sandbox
+    Sandbox -->|git push, PR or issue| GitHub
     
     %% Infrastructure
     K8sAPI -.->|manages| StablePods
     K8sAPI -.->|manages| CanaryPods
-    K8sAPI -.->|manages| PluginPod
     K8sAPI -.->|manages| AgentPod
-    CoreDNS -.->|resolves| AgentService
     
     %% PR Flow
-    GitHubAPI -->|creates PR| GitHub
     GitHub -->|notification| PRReview
     PRReview -->|merge| GitHub
     
     %% Styling
     style ArgoController fill:#326ce5,color:#fff
-    style PluginPod fill:#00c853,color:#fff
     style AgentPod fill:#ff6f00,color:#fff
+    style RemediationSvc fill:#00c853,color:#fff
     style GitHub fill:#24292e,color:#fff
-    style GeminiAPI fill:#4285f4,color:#fff
+    style LLM fill:#4285f4,color:#fff
     style K8sAPI fill:#326ce5,color:#fff
     
     classDef stable fill:#4caf50,color:#fff
@@ -162,5 +137,5 @@ graph TB
     
     class StablePods stable
     class CanaryPods canary
-    class GitHub,GitHubAPI,GeminiAPI,GoogleSearch external
+    class GitHub,LLM external
 ```
