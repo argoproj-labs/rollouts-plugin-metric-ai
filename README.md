@@ -2,7 +2,7 @@ Watch a recording from KubeCon Japan that explains this plugin: https://youtu.be
 
 ## rollouts-plugin-metric-ai
 
-Argo Rollouts metric provider plugin written in Go. Collects stable/canary pod logs and delegates AI analysis to an A2A agent. The agent fetches logs autonomously and can create GitHub issues/PRs when configured.
+Argo Rollouts metric provider plugin written in Go. Delegates canary analysis to an A2A agent, which fetches stable and canary pod logs itself and can create GitHub issues/PRs when configured.
 
 ## Quick Links
 
@@ -255,10 +255,8 @@ kubectl logs -n argo-rollouts deployment/argo-rollouts --timestamps=true
 
 Debug/trace levels log:
 - Configuration parsing
-- Pod log operations
 - A2A communication
 - Agent health checks
-- GitHub interactions
 - Performance metrics
 
 ## Troubleshooting

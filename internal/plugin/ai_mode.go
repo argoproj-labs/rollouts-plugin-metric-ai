@@ -63,10 +63,6 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 		Promote:       resp.Promote,
 		Confidence:    resp.Confidence,
 		PausedRollout: resp.PausedRollout,
-
-		// Multi-model fields
-		ModelResults:    convertModelResults(resp.ModelResults),
-		VotingRationale: resp.VotingRationale,
 	}
 
 	// Build JSON response for Argo Rollouts
@@ -76,10 +72,6 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 		"confidence":  resp.Confidence,
 		"rootCause":   resp.RootCause,
 		"remediation": resp.Remediation,
-	}
-	if resp.PRLink != "" {
-		jsonResp["prLink"] = resp.PRLink
-		log.WithField("prLink", resp.PRLink).Info("Agent created a PR with fix")
 	}
 	if resp.PausedRollout != "" {
 		jsonResp["pausedRollout"] = resp.PausedRollout
@@ -96,10 +88,4 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 	}).Info("Analysis completed via Kubernetes Agent")
 
 	return string(rawJSON), result, nil
-}
-
-// convertModelResults converts A2A model results to plugin model results
-func convertModelResults(a2aResults []ModelAnalysisResult) []ModelAnalysisResult {
-	// Already the same type, just return
-	return a2aResults
 }

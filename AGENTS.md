@@ -1,12 +1,12 @@
 # Agent Instructions — rollouts-plugin-metric-ai
 
-Go-based Argo Rollouts metric provider plugin. It collects stable and canary pod logs then delegates all AI analysis to the `kubernetes-agent` via a single `POST /a2a/analyze` call. There is no LLM inside the plugin. This is an experimental project — simplicity over backwards compatibility.
+Go-based Argo Rollouts metric provider plugin. It delegates all AI analysis to the `kubernetes-agent` via a single `POST /a2a/analyze` call; the agent fetches pod logs itself using its own tools. There is no LLM inside the plugin. This is an experimental project — simplicity over backwards compatibility.
 
 Do not create summary or migration documents. Update code and documentation in place.
 
 ## Stack
 
-Go 1.24+, Argo Rollouts v1.9.0 metric provider interface, HashiCorp go-plugin (RPC), `k8s.io/client-go`.
+Go 1.24+, Argo Rollouts v1.9.0 metric provider interface, HashiCorp go-plugin (RPC).
 
 ## Project Layout
 
@@ -16,7 +16,7 @@ internal/plugin/
   plugin.go                      # RpcPlugin — implements Run(), Resume(), Terminate(), GarbageCollect()
   a2a.go                         # A2AClient — POST /a2a/analyze, HealthCheck()
   ai_mode.go                     # analyzeWithKubernetesAgent() — wires plugin.go to a2a.go
-  ai.go                          # AIAnalysisResult, ModelAnalysisResult, AIAnalysisParams
+  ai.go                          # AIAnalysisResult
   utils.go                       # isTruthy(), truncate()
 config/argo-rollouts/            # Kustomize overlay for deploying Argo Rollouts with plugin
                                  # Note: the plugin itself carries no credentials — all AI keys
@@ -63,9 +63,8 @@ kubectl exec -n argo-rollouts deployment/argo-rollouts -- ls -la /home/argo-roll
 `Run()` in [`internal/plugin/plugin.go`](internal/plugin/plugin.go) is the main entry point called by Argo Rollouts during an analysis step. It:
 
 1. Parses the `AnalysisRun` metric config (`agentUrl`, `stableLabel`, `canaryLabel`, `extraPrompt`, `githubUrl`, `baseBranch`, `pauseOnUncertainty`, `uncertaintyThreshold`).
-2. Fetches pod logs for stable and canary pods using the in-cluster Kubernetes client.
-3. Calls `analyzeWithKubernetesAgent()`, which POSTs to the agent's `/a2a/analyze` endpoint.
-4. Returns a `Measurement` with `Phase: Successful` (promote) or `Phase: Failed` (rollback).
+2. Calls `analyzeWithKubernetesAgent()`, which POSTs to the agent's `/a2a/analyze` endpoint. The agent fetches pod logs itself; the plugin passes only the pod selectors.
+3. Returns a `Measurement` with `Phase: Successful` (promote) or `Phase: Failed` (rollback).
 
 ## AnalysisTemplate Configuration
 

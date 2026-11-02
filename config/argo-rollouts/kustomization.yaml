@@ -41,26 +41,3 @@ patches:
   target:
     kind: Deployment
     name: argo-rollouts
-- patch: |
-    # Add pod logs permissions to the ClusterRole
-    - op: add
-      path: /rules/-
-      value:
-        apiGroups:
-          - ""
-        resources:
-          - pods
-        verbs:
-          - get
-    - op: add
-      path: /rules/-
-      value:
-        apiGroups:
-          - ""
-        resources:
-          - pods/log
-        verbs:
-          - get
-  target:
-    kind: ClusterRole
-    name: argo-rollouts
