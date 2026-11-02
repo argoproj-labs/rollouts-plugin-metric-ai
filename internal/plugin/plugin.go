@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/rpc"
@@ -11,13 +10,7 @@ import (
 	pluginTypes "github.com/argoproj/argo-rollouts/utils/plugin/types"
 	goPlugin "github.com/hashicorp/go-plugin"
 	log "github.com/sirupsen/logrus"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 const ProviderType = "MetricAI"
@@ -109,33 +102,9 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"stableSelector": stableSelector,
 		"canarySelector": canarySelector,
 		"agentURL":       cfg.AgentURL,
-	}).Info("Fetching pod logs for analysis")
+	}).Info("Delegating analysis to A2A agent")
 
-	// Get Kubernetes client
-	kubeClient, err := acquireKubeClient()
-	if err != nil {
-		log.WithError(err).Error("Failed to acquire Kubernetes client")
-		return markMeasurementError(newMeasurement, err)
-	}
-
-	// Fetch logs
 	ns := analysisRun.Namespace
-	stableLogs, err := readFirstPodLogs(context.Background(), kubeClient, ns, stableSelector)
-	if err != nil {
-		log.WithError(err).Error("Failed to fetch stable pod logs")
-		return markMeasurementError(newMeasurement, err)
-	}
-
-	canaryLogs, err := readFirstPodLogs(context.Background(), kubeClient, ns, canarySelector)
-	if err != nil {
-		log.WithError(err).Error("Failed to fetch canary pod logs")
-		return markMeasurementError(newMeasurement, err)
-	}
-
-	log.WithFields(log.Fields{
-		"stableLogsLength": len(stableLogs),
-		"canaryLogsLength": len(canaryLogs),
-	}).Info("Successfully fetched pod logs")
 
 	// Extract rollout name from analysisRun (use analysisRun name as rollout identifier)
 	// The analysisRun name typically includes the rollout name or is unique per rollout
@@ -174,21 +143,6 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 	if result.PausedRollout != "" {
 		newMeasurement.Metadata["pausedRollout"] = result.PausedRollout
 		log.WithField("pausedRollout", result.PausedRollout).Info("Rollout paused for human review by the uncertainty gate")
-	}
-
-	// Store multi-model results if available
-	if len(result.ModelResults) > 0 {
-		modelResultsJSON, err := json.Marshal(result.ModelResults)
-		if err == nil {
-			newMeasurement.Metadata["modelResults"] = string(modelResultsJSON)
-		}
-		newMeasurement.Metadata["modelCount"] = fmt.Sprintf("%d", len(result.ModelResults))
-
-		if result.VotingRationale != "" {
-			newMeasurement.Metadata["votingRationale"] = result.VotingRationale
-		}
-
-		log.WithField("modelCount", len(result.ModelResults)).Info("Stored multi-model analysis results in metadata")
 	}
 
 	if result.Promote {
@@ -270,95 +224,6 @@ func (p *RpcPlugin) GetMetadata(metric v1alpha1.Metric) map[string]string {
 
 	return metadata
 }
-
-// ------------------------------
-// Kubernetes helpers
-// ------------------------------
-
-var getKubeClient = func() (*kubernetes.Clientset, error) {
-	// Try in-cluster first
-	if cfg, err := rest.InClusterConfig(); err == nil {
-		return kubernetes.NewForConfig(cfg)
-	}
-	// Fallback to KUBECONFIG
-	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		clientcmd.NewDefaultClientConfigLoadingRules(), &clientcmd.ConfigOverrides{},
-	)
-	restCfg, err := kubeconfig.ClientConfig()
-	if err != nil {
-		return nil, err
-	}
-	return kubernetes.NewForConfig(restCfg)
-}
-
-var fetchFirstPodLogs = func(ctx context.Context, client *kubernetes.Clientset, namespace, labelSelector string) (string, error) {
-	logger := log.WithFields(log.Fields{
-		"namespace":     namespace,
-		"labelSelector": labelSelector,
-	})
-	pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
-	if err != nil {
-		logger.WithError(err).Error("Failed to list pods")
-		return "", fmt.Errorf("failed to list pods for selector %s in namespace %s: %w", labelSelector, namespace, err)
-	}
-	if len(pods.Items) == 0 {
-		logger.Error("No pods found for selector")
-		return "", errors.NewNotFound(schema.GroupResource{Group: "", Resource: "pods"}, labelSelector)
-	}
-
-	// Skip terminating pods (those with DeletionTimestamp set)
-	var pod corev1.Pod
-	found := false
-	for _, p := range pods.Items {
-		if p.DeletionTimestamp == nil {
-			pod = p
-			found = true
-			break
-		}
-	}
-	if !found {
-		// Fallback to the first pod if all are terminating
-		pod = pods.Items[0]
-	}
-
-	// Prefer a non-Istio workload container when resolving pod logs (service mesh sidecars).
-	// Other meshes may use different sidecar names; extend the skip list if you hit the wrong container.
-	containerName := ""
-	for _, container := range pod.Spec.Containers {
-		if container.Name != "istio-proxy" && container.Name != "istio-init" {
-			containerName = container.Name
-			break
-		}
-	}
-
-	// If no app container found, use the first container
-	if containerName == "" && len(pod.Spec.Containers) > 0 {
-		containerName = pod.Spec.Containers[0].Name
-	}
-
-	logger.WithFields(log.Fields{
-		"podName":       pod.Name,
-		"containerName": containerName,
-	}).Info("Fetching logs from container")
-
-	podLogOpts := &corev1.PodLogOptions{
-		Container: containerName,
-	}
-	req := client.CoreV1().Pods(namespace).GetLogs(pod.Name, podLogOpts)
-	bytes, err := req.DoRaw(ctx)
-	if err != nil {
-		logger.WithError(err).WithFields(log.Fields{
-			"podName":       pod.Name,
-			"containerName": containerName,
-		}).Error("Failed to fetch logs for pod")
-		return "", fmt.Errorf("failed to fetch logs for pod %s container %s in namespace %s: %w", pod.Name, containerName, namespace, err)
-	}
-	return string(bytes), nil
-}
-
-// indirection to allow test override without touching exported names
-var acquireKubeClient = getKubeClient
-var readFirstPodLogs = fetchFirstPodLogs
 
 // ------------------------------
 // RPC Plugin wrapper

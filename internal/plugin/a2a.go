@@ -19,10 +19,9 @@ type A2AClient struct {
 
 // A2ARequest represents a request to the Kubernetes Agent
 type A2ARequest struct {
-	UserID   string                 `json:"userId"`
-	Prompt   string                 `json:"prompt"`
-	Context  map[string]interface{} `json:"context"`
-	MemoryID string                 `json:"memoryId,omitempty"` // Optional: for maintaining conversation history
+	UserID  string                 `json:"userId"`
+	Prompt  string                 `json:"prompt"`
+	Context map[string]interface{} `json:"context"`
 }
 
 // A2AResponse represents the response from the Kubernetes Agent
@@ -30,15 +29,10 @@ type A2AResponse struct {
 	Analysis    string `json:"analysis"`
 	RootCause   string `json:"rootCause"`
 	Remediation string `json:"remediation"`
-	PRLink      string `json:"prLink,omitempty"`
 	Promote     bool   `json:"promote"`
 	Confidence  int    `json:"confidence"`
 	// Rollout paused for human review by the uncertainty gate, if any
 	PausedRollout string `json:"pausedRollout,omitempty"`
-
-	// Multi-model fields
-	ModelResults    []ModelAnalysisResult `json:"modelResults,omitempty"`
-	VotingRationale string                `json:"votingRationale,omitempty"`
 }
 
 // NewA2AClient creates a new A2A client
@@ -64,10 +58,6 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 		"baseBranch":     baseBranch,
 	}).Info("Sending analysis request to Kubernetes Agent")
 
-	// Use rollout name as memory ID to maintain conversation history per rollout
-	// This allows the agent to remember previous analyses for the same rollout across multiple analysis runs
-	memoryID := fmt.Sprintf("rollout:%s/%s", namespace, rolloutName)
-
 	// Build the base prompt
 	prompt := fmt.Sprintf(
 		"Analyze canary deployment for rollout '%s'. Namespace: %s. Use your tools to fetch and compare logs from stable pods (selector: %s) vs canary pods (selector: %s). Determine if canary should be promoted.",
@@ -80,9 +70,8 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 	}
 
 	req := A2ARequest{
-		UserID:   "argo-rollouts",
-		MemoryID: memoryID,
-		Prompt:   prompt,
+		UserID: "argo-rollouts",
+		Prompt: prompt,
 		Context: map[string]interface{}{
 			"namespace":      namespace,
 			"rolloutName":    rolloutName,
@@ -153,26 +142,7 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 		"analysis":    result.Analysis,
 		"rootCause":   result.RootCause,
 		"remediation": result.Remediation,
-		"prLink":      result.PRLink,
-		"modelCount":  len(result.ModelResults),
 	}).Info("Received analysis from Kubernetes Agent")
-
-	// Log individual model results if multi-model analysis
-	if len(result.ModelResults) > 0 {
-		log.Info("Multi-model analysis results:")
-		for _, modelResult := range result.ModelResults {
-			log.WithFields(log.Fields{
-				"model":      modelResult.ModelName,
-				"promote":    modelResult.Promote,
-				"confidence": modelResult.Confidence,
-				"timeMs":     modelResult.ExecutionTimeMs,
-			}).Info("Model result")
-		}
-
-		if result.VotingRationale != "" {
-			log.WithField("rationale", result.VotingRationale).Info("Voting rationale")
-		}
-	}
 
 	return &result, nil
 }
@@ -190,33 +160,4 @@ func (c *A2AClient) HealthCheck() error {
 	// A 404 just means the health endpoint doesn't exist, but the agent is running
 	log.WithField("statusCode", resp.StatusCode).Debug("Kubernetes Agent responded to health check")
 	return nil
-}
-
-// splitLogs splits the combined logs context into stable and canary logs
-func splitLogs(logsContext string) (string, string) {
-	// The logsContext format: "--- STABLE LOGS ---\n...\n--- CANARY LOGS ---\n..."
-	const stableMarker = "--- STABLE LOGS ---"
-	const canaryMarker = "--- CANARY LOGS ---"
-
-	stableIdx := findIndex(logsContext, stableMarker)
-	canaryIdx := findIndex(logsContext, canaryMarker)
-
-	if stableIdx == -1 || canaryIdx == -1 {
-		// Fallback: if markers not found, treat all as stable logs
-		return logsContext, ""
-	}
-
-	stableLogs := logsContext[stableIdx+len(stableMarker) : canaryIdx]
-	canaryLogs := logsContext[canaryIdx+len(canaryMarker):]
-
-	return stableLogs, canaryLogs
-}
-
-func findIndex(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
 }
