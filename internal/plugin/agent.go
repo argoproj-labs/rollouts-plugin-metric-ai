@@ -11,21 +11,21 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// A2AClient handles communication with the Kubernetes Agent via A2A protocol
-type A2AClient struct {
+// AgentClient handles the HTTP calls to the analysis agent
+type AgentClient struct {
 	baseURL    string
 	httpClient *http.Client
 }
 
-// A2ARequest represents a request to the Kubernetes Agent
-type A2ARequest struct {
+// AnalysisRequest is the request body sent to the agent's /analyze endpoint
+type AnalysisRequest struct {
 	UserID  string                 `json:"userId"`
 	Prompt  string                 `json:"prompt"`
 	Context map[string]interface{} `json:"context"`
 }
 
-// A2AResponse represents the response from the Kubernetes Agent
-type A2AResponse struct {
+// AnalysisResponse is the response returned by the agent's /analyze endpoint
+type AnalysisResponse struct {
 	Analysis    string `json:"analysis"`
 	RootCause   string `json:"rootCause"`
 	Remediation string `json:"remediation"`
@@ -35,9 +35,9 @@ type A2AResponse struct {
 	PausedRollout string `json:"pausedRollout,omitempty"`
 }
 
-// NewA2AClient creates a new A2A client
-func NewA2AClient(baseURL string) *A2AClient {
-	return &A2AClient{
+// NewAgentClient creates a new agent HTTP client
+func NewAgentClient(baseURL string) *AgentClient {
+	return &AgentClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Minute, // Agent analysis may take time
@@ -45,9 +45,9 @@ func NewA2AClient(baseURL string) *A2AClient {
 	}
 }
 
-// AnalyzeWithAgent sends analysis request to Kubernetes Agent
+// AnalyzeWithAgent POSTs an analysis request to the agent's /analyze endpoint
 // In agent mode, send pod selectors instead of logs - let the agent fetch logs using its tools
-func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (*A2AResponse, error) {
+func (c *AgentClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, canarySelector, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (*AnalysisResponse, error) {
 	log.WithFields(log.Fields{
 		"namespace":      namespace,
 		"rolloutName":    rolloutName,
@@ -69,7 +69,7 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 		prompt += fmt.Sprintf("\n\nAdditional context: %s", extraPrompt)
 	}
 
-	req := A2ARequest{
+	req := AnalysisRequest{
 		UserID: "argo-rollouts",
 		Prompt: prompt,
 		Context: map[string]interface{}{
@@ -109,7 +109,7 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 	}
 
 	resp, err := c.httpClient.Post(
-		c.baseURL+"/a2a/analyze",
+		c.baseURL+"/analyze",
 		"application/json",
 		bytes.NewBuffer(body),
 	)
@@ -131,7 +131,7 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 	// Log the full JSON response
 	log.WithField("response", string(bodyBytes)).Info("Response from Kubernetes Agent")
 
-	var result A2AResponse
+	var result AnalysisResponse
 	if err := json.Unmarshal(bodyBytes, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %v", err)
 	}
@@ -147,9 +147,9 @@ func (c *A2AClient) AnalyzeWithAgent(namespace, rolloutName, stableSelector, can
 	return &result, nil
 }
 
-// HealthCheck checks if the Kubernetes Agent is available
+// HealthCheck checks if the analysis agent is available
 // Returns nil if the agent responds (even with 404), as long as it's reachable
-func (c *A2AClient) HealthCheck() error {
+func (c *AgentClient) HealthCheck() error {
 	resp, err := c.httpClient.Get(c.baseURL + "/")
 	if err != nil {
 		return fmt.Errorf("health check failed: %v", err)
