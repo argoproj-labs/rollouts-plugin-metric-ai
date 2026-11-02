@@ -11,7 +11,7 @@ spec:
       provider:
         plugin:
           argoproj-labs/metric-ai:
-            # Agent URL is required - all analysis is delegated to the A2A agent
+            # Agent URL is required - all analysis is delegated to the analysis agent
             agentUrl: http://kubernetes-agent:8080
             namespace: "{{args.namespace}}"
             stableLabel: app=rollouts-demo,revision=stable

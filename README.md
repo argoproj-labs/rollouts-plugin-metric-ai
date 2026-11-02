@@ -2,7 +2,7 @@ Watch a recording from KubeCon Japan that explains this plugin: https://youtu.be
 
 ## rollouts-plugin-metric-ai
 
-Argo Rollouts metric provider plugin written in Go. Delegates canary analysis to an A2A agent, which fetches stable and canary pod logs itself and can create GitHub issues/PRs when configured.
+Argo Rollouts metric provider plugin written in Go. Delegates canary analysis to an external analysis agent over HTTP, which fetches stable and canary pod logs and metrics itself and can create GitHub issues/PRs when configured. `kubernetes-agent` is the reference implementation; any service that implements the same HTTP contract can serve as the analysis agent.
 
 ## Quick Links
 
@@ -74,10 +74,10 @@ spec:
 
 ## How It Works
 
-The plugin uses the A2A protocol to delegate analysis to the Kubernetes Agent:
+The plugin delegates analysis to the analysis agent over HTTP:
 
 1. Plugin collects pod labels and namespace information
-2. Sends A2A request to the agent
+2. Sends the analysis request to the agent
 3. Agent fetches logs and metrics
 4. Agent analyzes with AI
 5. Agent identifies root causes
@@ -109,7 +109,7 @@ sequenceDiagram
     end
 
     AC->>P: AnalysisRun
-    P->>KA: HTTP POST /a2a/analyze
+    P->>KA: HTTP POST /analyze
     par Collect diagnostics
         KA->>DA: Fetch logs & pod details
         DA-->>KA: logs & pod details
@@ -129,6 +129,49 @@ sequenceDiagram
     end
 ```
 
+## Agent HTTP Contract
+
+The plugin talks to the analysis agent over a single HTTP endpoint. Any service that implements this contract can replace `kubernetes-agent`, the reference implementation.
+
+**Request**: `POST {agentUrl}/analyze` with `Content-Type: application/json`:
+
+```json
+{
+  "userId": "argo-rollouts",
+  "prompt": "Analyze canary deployment for rollout '...'",
+  "context": {
+    "namespace": "quarkus-demo",
+    "rolloutName": "my-rollout",
+    "stableSelector": "role=stable",
+    "canarySelector": "role=canary",
+    "extraPrompt": "Focus on error rate and latency.",
+    "repoUrl": "https://github.com/org/repo",
+    "baseBranch": "main",
+    "pauseOnUncertainty": true,
+    "uncertaintyThreshold": 60
+  }
+}
+```
+
+`extraPrompt`, `repoUrl`, `baseBranch`, `pauseOnUncertainty`, and `uncertaintyThreshold` are optional and omitted when not configured.
+
+**Success response** (HTTP 200):
+
+```json
+{
+  "analysis": "Canary error rate matches stable ...",
+  "rootCause": "...",
+  "remediation": "...",
+  "promote": true,
+  "confidence": 92,
+  "pausedRollout": "my-rollout"
+}
+```
+
+`pausedRollout` is optional and set only when the uncertainty gate paused the rollout for human review.
+
+The agent is expected to fetch logs and metrics itself using its own tools — the plugin sends only the pod selectors. The plugin waits up to 5 minutes for a response. Any non-200 status or a timeout makes the measurement Error, and Argo Rollouts retries it per its `consecutiveErrorLimit`.
+
 ## Prerequisites
 
 Deploy the Kubernetes Agent in your cluster. See [kdubois/kubernetes-aiops-agent](https://github.com/kdubois/kubernetes-aiops-agent) for an example that runs analysis with logs and metrics
@@ -138,7 +181,7 @@ The agent must be accessible via HTTP from the Argo Rollouts controller.
 Analysis fails if:
 - `agentUrl` is not configured
 - Agent is unavailable or health check fails
-- A2A communication fails
+- The HTTP call to the agent fails
 
 No fallback mode exists.
 
@@ -148,7 +191,7 @@ No fallback mode exists.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `agentUrl` | string | **Yes** | A2A agent URL (e.g., `http://kubernetes-agent:8080`) |
+| `agentUrl` | string | **Yes** | Analysis agent URL (e.g., `http://kubernetes-agent:8080`) |
 | `stableLabel` | string | Yes | Label selector for stable pods (e.g., `role=stable`) |
 | `canaryLabel` | string | Yes | Label selector for canary pods (e.g., `role=canary`) |
 | `githubUrl` | string | No | GitHub repository URL for issue creation |
@@ -207,7 +250,6 @@ See `config/rollouts-examples/` for complete deployments with rollouts, services
 
 Complete working examples:
 - [argo-rollouts-quarkus-demo](https://github.com/kdubois/argo-rollouts-quarkus-demo) - Demo app with test scenarios
-- [progressive-delivery](https://github.com/kdubois/progressive-delivery) - Full GitOps setup
 
 ## Debugging and Logging
 
@@ -255,7 +297,7 @@ kubectl logs -n argo-rollouts deployment/argo-rollouts --timestamps=true
 
 Debug/trace levels log:
 - Configuration parsing
-- A2A communication
+- Communication with the agent
 - Agent health checks
 - Performance metrics
 
@@ -290,14 +332,14 @@ curl http://localhost:8080/q/health
 
 Check plugin logs:
 ```bash
-kubectl logs -n argo-rollouts deployment/argo-rollouts | grep -E "agent|A2A|Attempting to create"
+kubectl logs -n argo-rollouts deployment/argo-rollouts | grep -E "agent|Attempting to create"
 ```
 
 ### Common Issues
 
 - "agentUrl is required": Add `agentUrl` to AnalysisTemplate
 - "Agent health check failed": Verify agent is running and accessible
-- "A2A agent analysis failed": Check agent logs and network
+- "Agent analysis failed": Check agent logs and network
 - GitHub issue creation skipped: Check for "githubUrl not configured" in logs
 - Namespace auto-detection: Uses namespace from AnalysisRun automatically
 

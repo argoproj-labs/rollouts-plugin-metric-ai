@@ -40,7 +40,7 @@ type aiConfig struct {
 	// optional: namespace label selectors for stable/canary pods
 	StableLabel string `json:"stableLabel,omitempty"`
 	CanaryLabel string `json:"canaryLabel,omitempty"`
-	// Agent URL for A2A agent (required)
+	// Agent URL for the analysis agent (required)
 	AgentURL string `json:"agentUrl"`
 	// Extra prompt text to append to the AI analysis
 	ExtraPrompt string `json:"extraPrompt,omitempty"`
@@ -102,7 +102,7 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"stableSelector": stableSelector,
 		"canarySelector": canarySelector,
 		"agentURL":       cfg.AgentURL,
-	}).Info("Delegating analysis to A2A agent")
+	}).Info("Delegating analysis to the agent")
 
 	ns := analysisRun.Namespace
 
@@ -113,16 +113,16 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		rolloutName = ownerName
 	}
 
-	// Analyze with A2A agent (all analysis is delegated to the agent)
+	// Analyze with the agent (all analysis is delegated to the agent)
 	log.WithFields(log.Fields{
 		"agentURL":    cfg.AgentURL,
 		"rolloutName": rolloutName,
 		"githubUrl":   cfg.GitHubURL,
 		"baseBranch":  cfg.BaseBranch,
-	}).Info("Starting A2A agent analysis")
+	}).Info("Starting agent analysis")
 	analysisJSON, result, aiErr := analyzeWithAgent(ns, rolloutName, stableSelector, canarySelector, cfg.AgentURL, cfg.ExtraPrompt, cfg.GitHubURL, cfg.BaseBranch, cfg.PauseOnUncertainty, cfg.UncertaintyThreshold)
 	if aiErr != nil {
-		log.WithError(aiErr).Error("A2A agent analysis failed")
+		log.WithError(aiErr).Error("Agent analysis failed")
 		return markMeasurementError(newMeasurement, aiErr)
 	}
 
@@ -130,7 +130,7 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		"promote":        result.Promote,
 		"confidence":     result.Confidence,
 		"analysisLength": len(result.Text),
-	}).Info("A2A agent analysis completed")
+	}).Info("Agent analysis completed")
 
 	// Store analysis in metadata
 	if newMeasurement.Metadata == nil {
@@ -150,7 +150,7 @@ func (p *RpcPlugin) Run(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metri
 		// Use confidence as a decimal value (0.0 to 1.0)
 		newMeasurement.Value = fmt.Sprintf("%.2f", float64(result.Confidence)/100.0)
 		newMeasurement.Phase = v1alpha1.AnalysisPhaseSuccessful
-		log.Info("Canary promotion recommended by A2A agent analysis")
+		log.Info("Canary promotion recommended by agent analysis")
 	} else {
 		// Failure: canary has issues
 		newMeasurement.Value = "0"
@@ -174,7 +174,7 @@ func markMeasurementError(m v1alpha1.Measurement, err error) v1alpha1.Measuremen
 
 // Resume checks if an external measurement is finished
 func (p *RpcPlugin) Resume(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1.Metric, measurement v1alpha1.Measurement) v1alpha1.Measurement {
-	// A2A agent analysis is synchronous, so just return the measurement
+	// Agent analysis is synchronous, so just return the measurement
 	return measurement
 }
 
@@ -183,7 +183,7 @@ func (p *RpcPlugin) Terminate(analysisRun *v1alpha1.AnalysisRun, metric v1alpha1
 	log.WithFields(log.Fields{
 		"analysisRun": analysisRun.Name,
 		"metric":      metric.Name,
-	}).Info("Terminating A2A agent analysis measurement")
+	}).Info("Terminating agent analysis measurement")
 	return measurement
 }
 
@@ -193,7 +193,7 @@ func (p *RpcPlugin) GarbageCollect(analysisRun *v1alpha1.AnalysisRun, metric v1a
 		"analysisRun": analysisRun.Name,
 		"metric":      metric.Name,
 		"limit":       limit,
-	}).Debug("GarbageCollect called (no-op for A2A plugin)")
+	}).Debug("GarbageCollect called (no-op for this plugin)")
 	return pluginTypes.RpcError{}
 }
 

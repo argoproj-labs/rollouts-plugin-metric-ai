@@ -7,7 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// analyzeWithAgent delegates all analysis to the Kubernetes Agent via A2A
+// analyzeWithAgent delegates all analysis to the analysis agent over HTTP
 // This is now the only analysis method - no direct LLM calls
 // Declared as a variable to allow test stubbing
 var analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (string, AIAnalysisResult, error) {
@@ -23,7 +23,7 @@ var analyzeWithAgent = func(namespace, rolloutName, stableSelector, canarySelect
 	return analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch, pauseOnUncertainty, uncertaintyThreshold)
 }
 
-// analyzeWithKubernetesAgent delegates analysis to the Kubernetes Agent via A2A
+// analyzeWithKubernetesAgent delegates analysis to the analysis agent over HTTP
 func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySelector, agentURL, extraPrompt, githubUrl, baseBranch string, pauseOnUncertainty bool, uncertaintyThreshold int) (string, AIAnalysisResult, error) {
 	// Agent URL must be explicitly configured in the AnalysisTemplate
 	if agentURL == "" {
@@ -32,7 +32,7 @@ func analyzeWithKubernetesAgent(namespace, rolloutName, stableSelector, canarySe
 
 	log.WithField("agentURL", agentURL).Info("Using Kubernetes Agent for analysis")
 
-	client := NewA2AClient(agentURL)
+	client := NewAgentClient(agentURL)
 
 	// Health check first
 	if err := client.HealthCheck(); err != nil {

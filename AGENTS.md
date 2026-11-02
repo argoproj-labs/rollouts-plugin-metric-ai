@@ -1,6 +1,6 @@
 # Agent Instructions — rollouts-plugin-metric-ai
 
-Go-based Argo Rollouts metric provider plugin. It delegates all AI analysis to the `kubernetes-agent` via a single `POST /a2a/analyze` call; the agent fetches pod logs itself using its own tools. There is no LLM inside the plugin. This is an experimental project — simplicity over backwards compatibility.
+Go-based Argo Rollouts metric provider plugin. It delegates all AI analysis to an external analysis agent over HTTP — a single `POST /analyze` call — and turns the response into a promote or rollback measurement. The agent fetches pod logs and metrics itself using its own tools; the plugin sends only the pod selectors. `kubernetes-agent` is the reference implementation of this HTTP contract, and any service implementing the same contract can serve as the analysis agent. There is no LLM inside the plugin. This is an experimental project — simplicity over backwards compatibility.
 
 Do not create summary or migration documents. Update code and documentation in place.
 
@@ -14,8 +14,8 @@ Go 1.24+, Argo Rollouts v1.9.0 metric provider interface, HashiCorp go-plugin (R
 main.go                          # Plugin bootstrap — RPC handshake, serves RpcMetricProviderPlugin
 internal/plugin/
   plugin.go                      # RpcPlugin — implements Run(), Resume(), Terminate(), GarbageCollect()
-  a2a.go                         # A2AClient — POST /a2a/analyze, HealthCheck()
-  ai_mode.go                     # analyzeWithKubernetesAgent() — wires plugin.go to a2a.go
+  agent.go                       # AgentClient — POST /analyze, HealthCheck()
+  ai_mode.go                     # analyzeWithKubernetesAgent() — wires plugin.go to agent.go
   ai.go                          # AIAnalysisResult
   utils.go                       # isTruthy(), truncate()
 config/argo-rollouts/            # Kustomize overlay for deploying Argo Rollouts with plugin
@@ -48,11 +48,17 @@ kubectl logs -f deployment/argo-rollouts -n argo-rollouts
 
 ## Cluster Deployment (Production / OpenShift)
 
-The plugin is deployed as part of the Argo Rollouts controller image via GitOps (`progressive-delivery/` repo). Do not patch cluster resources directly — update the manifests and push.
+The plugin ships as a binary inside the Argo Rollouts controller image. To deploy a new version:
 
 ```bash
-# After pushing a new image, update config/argo-rollouts/kustomization.yaml with the new tag,
-# commit, and push. Argo CD will sync.
+# Build and push the image
+make docker-buildx
+
+# Update the image tag in config/argo-rollouts/kustomization.yaml, commit, and push
+
+# Restart the controller so it picks up the new binary
+kubectl rollout restart deployment/argo-rollouts -n argo-rollouts
+kubectl rollout status deployment/argo-rollouts -n argo-rollouts
 
 # Verify the plugin binary is present in the controller
 kubectl exec -n argo-rollouts deployment/argo-rollouts -- ls -la /home/argo-rollouts/rollouts-plugin-metric-ai
@@ -63,7 +69,7 @@ kubectl exec -n argo-rollouts deployment/argo-rollouts -- ls -la /home/argo-roll
 `Run()` in [`internal/plugin/plugin.go`](internal/plugin/plugin.go) is the main entry point called by Argo Rollouts during an analysis step. It:
 
 1. Parses the `AnalysisRun` metric config (`agentUrl`, `stableLabel`, `canaryLabel`, `extraPrompt`, `githubUrl`, `baseBranch`, `pauseOnUncertainty`, `uncertaintyThreshold`).
-2. Calls `analyzeWithKubernetesAgent()`, which POSTs to the agent's `/a2a/analyze` endpoint. The agent fetches pod logs itself; the plugin passes only the pod selectors.
+2. Calls `analyzeWithKubernetesAgent()`, which POSTs to the agent's `/analyze` endpoint. The agent fetches pod logs itself; the plugin passes only the pod selectors.
 3. Returns a `Measurement` with `Phase: Successful` (promote) or `Phase: Failed` (rollback).
 
 ## AnalysisTemplate Configuration

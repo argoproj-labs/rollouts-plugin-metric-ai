@@ -10,9 +10,9 @@ flowchart TD
     
     Analysis --> Plugin{Metric AI Plugin<br/>argoproj-labs/metric-ai}
     
-    Plugin --> A2ACall[Single A2A call:<br/>POST /a2a/analyze<br/>with pod selectors]
+    Plugin --> AgentCall[Single HTTP call:<br/>POST /analyze<br/>with pod selectors]
     
-    A2ACall --> K8sAgent[Kubernetes AI Agent<br/>in cluster]
+    AgentCall --> K8sAgent[Kubernetes AI Agent<br/>in cluster]
     
     K8sAgent --> AgentTools[Agent uses tools:<br/>1. rollout status<br/>2. canary metrics<br/>3. canary diagnostics<br/>pod logs and events<br/>4. pause rollout]
     
@@ -99,7 +99,7 @@ graph TB
     ArgoController -->|creates| CanaryPods
     
     %% Plugin Analysis Flow
-    ArgoController -->|POST /a2a/analyze| AgentService
+    ArgoController -->|POST /analyze| AgentService
     
     %% Agent Operations
     AgentService --> AgentPod
