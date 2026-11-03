@@ -2,12 +2,14 @@ Watch a recording from KubeCon Japan that explains this plugin: https://youtu.be
 
 ## rollouts-plugin-metric-ai
 
-Argo Rollouts metric provider plugin written in Go. Delegates canary analysis to an external analysis agent over HTTP, which fetches stable and canary pod logs and metrics itself and can create GitHub issues/PRs when configured. `kubernetes-agent` is the reference implementation; any service that implements the same HTTP contract can serve as the analysis agent.
+This project features an Argo Rollouts metric provider plugin written in Go. It delegates canary analysis to an external analysis AI agent over HTTP, which fetches stable and canary pod metrics and telemetry and then decides whether a release is healthy or not. It then returns the result to the plugin which will abort the rollout in case of a failed analysis.  In that case, the analysis agent also asynchronously delegates to a remediation agent that will attempt to fix the code and create GitHub issues/PRs when configured. [kdubois/kubernetes-aiops-agent](https://github.com/kdubois/kubernetes-aiops-agent) is the reference implementation of this agentic analysis and remediation system, but any service that implements the same HTTP contract can serve as the analysis agent.
 
 ## Quick Links
 
 - **Kubernetes Agent**: [kdubois/kubernetes-aiops-agent](https://github.com/kdubois/kubernetes-aiops-agent)
-- **Demo Application**: [argo-rollouts-quarkus-demo](https://github.com/kdubois/argo-rollouts-quarkus-demo)
+- **Remediation Agent**: [kdubois/remediation-agent](https://github.com/kdubois/remediation-agent) — sandboxed coding agent that produces the PRs and issues
+- **Demo Application**: [kdubois/argo-rollouts-quarkus-demo](https://github.com/kdubois/argo-rollouts-quarkus-demo)
+- **End-to-end example deployment of all components (ArgoCD, Argo Rollouts, this plugin, the kubernetes-aiops-agent and sample apps)**: https://github.com/kdubois/progressive-delivery
 
 ## Overview
 
@@ -33,11 +35,10 @@ spec:
 
 Replace `v0.1.10` with the desired release version. See [releases](https://github.com/argoproj-labs/rollouts-plugin-metric-ai/releases) for available versions.
 
-This README documents the current `main` branch, so a released binary may not include the newest configuration fields. The release notes list the changes in each version.
 
 ### Option 2: ConfigMap
 
-For manual installation without RolloutManager:
+For manual installation without RolloutManager, build the go app and then reference it:
 
 ```yaml
 apiVersion: v1
@@ -357,7 +358,9 @@ make test-e2e
 
 ## Related Projects
 
-- [kubernetes-aiops-agent](https://github.com/kdubois/kubernetes-aiops-agent) - The AI agent
+- [kubernetes-aiops-agent](https://github.com/kdubois/kubernetes-aiops-agent) - The AI analysis agent
+- [remediation-agent](https://github.com/kdubois/remediation-agent) - The sandboxed remediation agent
+- [progressive-delivery](https://github.com/kdubois/progressive-delivery) - End-to-end deployment of the full stack
 - [argo-rollouts](https://github.com/argoproj/argo-rollouts) - Progressive delivery controller
 - [argo-rollouts-quarkus-demo](https://github.com/kdubois/argo-rollouts-quarkus-demo) - Demo application
 
