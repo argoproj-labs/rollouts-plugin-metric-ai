@@ -1,6 +1,8 @@
 # Agent Instructions — rollouts-plugin-metric-ai
 
-Go-based Argo Rollouts metric provider plugin. It delegates all AI analysis to an external analysis agent over HTTP — a single `POST /analyze` call — and turns the response into a promote or rollback measurement. The agent fetches pod logs and metrics itself using its own tools; the plugin sends only the pod selectors. `kubernetes-agent` is the reference implementation of this HTTP contract, and any service implementing the same contract can serve as the analysis agent. There is no LLM inside the plugin. This is an experimental project — simplicity over backwards compatibility.
+Go-based Argo Rollouts metric provider plugin. It delegates all AI analysis to an external analysis agent over HTTP — a single `POST /analyze` call — and turns the response into a promote or rollback measurement. The plugin sends only the pod selectors; the agent fetches logs and metrics itself with its own tools. `kubernetes-agent` is the reference implementation of this HTTP contract, and any service implementing the same contract can serve as the analysis agent. There is no LLM inside the plugin. This is an experimental project — simplicity over backwards compatibility.
+
+The reference agent runs a tiered pipeline behind that single call: parallel data agents gather evidence, a cheap LLM (open weights, e.g. Qwen) concludes, a decision model (Jev via TypeSafe) grades whether the conclusion is supported by the evidence, and a clearly disputed conclusion is re-analyzed once with a stronger LLM (open weights, e.g. DeepSeek) before an optional human-approval pause gate decides. On a rollback the agent asynchronously delegates to `remediation-agent`, a sandboxed coding agent that verifies fixes with tests and opens GitHub PRs (code bugs) or issues (operational problems). The full stack deploys via [kdubois/progressive-delivery](https://github.com/kdubois/progressive-delivery).
 
 Do not create summary or migration documents. Update code and documentation in place.
 
@@ -70,7 +72,7 @@ kubectl exec -n argo-rollouts deployment/argo-rollouts -- ls -la /home/argo-roll
 
 1. Parses the `AnalysisRun` metric config (`agentUrl`, `stableLabel`, `canaryLabel`, `extraPrompt`, `githubUrl`, `baseBranch`, `pauseOnUncertainty`, `uncertaintyThreshold`).
 2. Calls `analyzeWithKubernetesAgent()`, which POSTs to the agent's `/analyze` endpoint. The agent fetches pod logs itself; the plugin passes only the pod selectors.
-3. Returns a `Measurement` with `Phase: Successful` (promote) or `Phase: Failed` (rollback).
+3. Returns a `Measurement` with `Phase: Successful` (promote) or `Phase: Failed` (rollback). A promote that the agent's grader disputes beyond its margin and that trips the uncertainty gate returns `pausedRollout` in the measurement metadata instead — the rollout holds for human review until `oc argo rollouts promote`.
 
 ## AnalysisTemplate Configuration
 
@@ -107,7 +109,11 @@ kubectl get analysisrun -n quarkus-demo
 kubectl describe analysisrun <name> -n quarkus-demo
 ```
 
-The plugin carries no credentials. All AI keys (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `github_token`, etc.) live exclusively in the `kubernetes-agent` pod — either injected from the `kubernetes-agent` Kubernetes Secret or read from Vault at startup. The `githubUrl` field in the `AnalysisTemplate` is a plain repository URL forwarded to the agent; no token is needed in the controller.
+The plugin carries no credentials. All AI keys (analysis, grader, escalation and
+remediation keys) live exclusively in the agent services — injected from their
+Kubernetes Secrets or synced from Vault by the Vault Secrets Operator. The
+`githubUrl` field in the `AnalysisTemplate` is a plain repository URL forwarded
+to the agent; no token is needed in the controller.
 
 ## Common Issues
 
