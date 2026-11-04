@@ -130,7 +130,7 @@ Every commit needs a `Signed-off-by` line — the DCO app rejects PRs without it
 
 ## Versioning
 
-Tags follow the plugin's own semver (`v0.1.x`, `v0.2.x`, ...) and do not track the Argo Rollouts version, which is pinned in `go.mod`. `v1.9.0` predates this rule and is kept for its published release URL.
+Tags track the Argo Rollouts version the plugin is built against, which is pinned in `go.mod` — Argo Rollouts v1.9.0 gets plugin releases v1.9.x. Bump the patch for each plugin release within that Argo Rollouts line, and bump the minor when `go.mod` moves to a new Argo Rollouts minor. The early `v0.x` tags predate this rule.
 
 ## Documentation Standards
 
