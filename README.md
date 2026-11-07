@@ -8,12 +8,12 @@ This project features an Argo Rollouts metric provider plugin written in Go. It 
 
 - **Kubernetes Agent**: [kdubois/kubernetes-aiops-agent](https://github.com/kdubois/kubernetes-aiops-agent)
 - **Remediation Agent**: [kdubois/remediation-agent](https://github.com/kdubois/remediation-agent) — sandboxed coding agent that produces the PRs and issues
-- **Demo Application**: [kdubois/argo-rollouts-quarkus-demo](https://github.com/kdubois/argo-rollouts-quarkus-demo)
+- **Demo Application**: [kdubois/argo-rollouts-aiops-dashboard](https://github.com/kdubois/argo-rollouts-aiops-dashboard)
 - **End-to-end example deployment of all components (ArgoCD, Argo Rollouts, this plugin, the kubernetes-aiops-agent and sample apps)**: https://github.com/kdubois/progressive-delivery
 
 ## Overview
 
-This plugin bridges Argo Rollouts with an autonomous Kubernetes Agent for AI-powered canary analysis. Instead of making direct LLM calls, it sends analysis requests to an agent that debugs pods, analyzes logs and metrics, identifies root causes, and creates GitHub PRs with fixes.
+This plugin bridges Argo Rollouts with an autonomous Kubernetes agent for AI-powered canary analysis. Instead of making direct LLM calls, it sends analysis requests to an agent that debugs pods, analyzes logs and metrics, and identifies root causes. The agent can delegate a code fix to a remediation agent, which opens the PR or issue.
 
 ## Installation
 
@@ -84,9 +84,9 @@ The plugin delegates analysis to the analysis agent over HTTP:
 5. Agent identifies root causes
 6. Agent returns structured JSON response with promote/rollback decision
 7. Plugin uses result to promote or abort canary
-8. Agent asynchronously creates GitHub PRs with fixes (if needed)
+8. Agent asynchronously delegates a fix to the remediation agent, which opens a GitHub PR or issue (if configured)
 
-No LLM configuration needed in the plugin. The agent handles its own model configuration, log fetching, and GitHub integration. Remediation happens asynchronously after the rollout decision is made.
+No LLM configuration needed in the plugin. The agent handles its own model configuration, log fetching, and remediation delegation. Remediation happens asynchronously after the rollout decision is made.
 
 ### Architecture
 
@@ -195,8 +195,8 @@ No fallback mode exists.
 | `agentUrl` | string | **Yes** | Analysis agent URL (e.g., `http://kubernetes-agent:8080`) |
 | `stableLabel` | string | Yes | Label selector for stable pods (e.g., `role=stable`) |
 | `canaryLabel` | string | Yes | Label selector for canary pods (e.g., `role=canary`) |
-| `githubUrl` | string | No | GitHub repository URL for issue creation |
-| `baseBranch` | string | No | Git base branch for issue creation |
+| `githubUrl` | string | No | Repository URL forwarded to the analysis agent, which passes it to the remediation agent |
+| `baseBranch` | string | No | Git base branch the remediation agent works from |
 | `extraPrompt` | string | No | Additional context for AI analysis |
 | `pauseOnUncertainty` | bool | No | Pause the rollout for human review when the agent promotes with confidence below the threshold (default `false`) |
 | `uncertaintyThreshold` | int | No | Confidence threshold for the pause gate, 0-100 (default `50`) |
@@ -250,7 +250,7 @@ See `examples/` for analysis templates and ConfigMap setup.
 See `config/rollouts-examples/` for complete deployments with rollouts, services, and traffic generators.
 
 Complete working examples:
-- [argo-rollouts-quarkus-demo](https://github.com/kdubois/argo-rollouts-quarkus-demo) - Demo app with test scenarios
+- [argo-rollouts-aiops-dashboard](https://github.com/kdubois/argo-rollouts-aiops-dashboard) - Demo app with test scenarios
 
 ## Debugging and Logging
 
@@ -341,7 +341,7 @@ kubectl logs -n argo-rollouts deployment/argo-rollouts | grep -E "agent|Attempti
 - "agentUrl is required": Add `agentUrl` to AnalysisTemplate
 - "Agent health check failed": Verify agent is running and accessible
 - "Agent analysis failed": Check agent logs and network
-- GitHub issue creation skipped: Check for "githubUrl not configured" in logs
+- Remediation skipped: `githubUrl` is unset in the AnalysisTemplate, or the agent has no remediation service configured
 - Namespace auto-detection: Uses namespace from AnalysisRun automatically
 
 For agent-specific issues, see [Kubernetes Agent Troubleshooting](https://github.com/kdubois/kubernetes-aiops-agent#troubleshooting).
@@ -362,7 +362,7 @@ make test-e2e
 - [remediation-agent](https://github.com/kdubois/remediation-agent) - The sandboxed remediation agent
 - [progressive-delivery](https://github.com/kdubois/progressive-delivery) - End-to-end deployment of the full stack
 - [argo-rollouts](https://github.com/argoproj/argo-rollouts) - Progressive delivery controller
-- [argo-rollouts-quarkus-demo](https://github.com/kdubois/argo-rollouts-quarkus-demo) - Demo application
+- [argo-rollouts-aiops-dashboard](https://github.com/kdubois/argo-rollouts-aiops-dashboard) - Demo application
 
 ## License
 
