@@ -21,8 +21,8 @@ flowchart TD
     CheapModel --> Grader{Decision model grades:<br/>is the conclusion<br/>supported by the evidence?}
     
     Grader -->|Supported or neutral| Gate
-    Grader -->|Clearly disputed| StrongModel[Analysis tier 2:<br/>stronger LLM re-analyzes<br/>the same evidence]
-    StrongModel --> Gate{Promote with low<br/>effective confidence<br/>and gate enabled?}
+    Grader -->|Clearly disputed| SecondOpinionModel[Analysis tier 2:<br/>second opinion LLM re-analyzes<br/>the same evidence]
+    SecondOpinionModel --> Gate{Promote with low<br/>effective confidence<br/>and gate enabled?}
     
     Gate -->|Yes| Pause[Pause rollout<br/>for human review]
     Gate -->|No| NeedsFix{Rollback with<br/>a repo configured?}
@@ -52,7 +52,7 @@ flowchart TD
     style K8sAgent fill:#fff3cd
     style Plugin fill:#d1ecf1
     style Grader fill:#f0e6ff
-    style StrongModel fill:#f0e6ff
+    style SecondOpinionModel fill:#f0e6ff
     style Delegate fill:#f8d7da
     style Remediation fill:#f8d7da
     style PRLink fill:#d4edda
@@ -92,8 +92,8 @@ graph TB
     subgraph "External Services"
         GitHub[GitHub<br/>source, PRs, issues]
         CheapLLM[Analysis LLM<br/>open weights, e.g. Qwen]
-        StrongLLM[Escalation LLM<br/>open weights, e.g. DeepSeek]
-        DecisionModel[Decision Model<br/>Jev via TypeSafe]
+        SecondOpinionLLM[Second opinion LLM<br/>open weights, e.g. DeepSeek]
+        DecisionModel[Decision Model<br/>grades the conclusion]
     end
     
     subgraph "Developer Workflow"
@@ -122,7 +122,7 @@ graph TB
     AgentPod -->|get metrics| MetricsServer
     AgentPod -->|tier 1 analysis| CheapLLM
     AgentPod -->|grades conclusions| DecisionModel
-    AgentPod -->|tier 2 on dispute| StrongLLM
+    AgentPod -->|tier 2 on dispute| SecondOpinionLLM
     AgentPod -->|async A2A after rollback| RemediationSvc
     
     %% Credential sync
@@ -149,7 +149,7 @@ graph TB
     style DecisionModel fill:#7b1fa2,color:#fff
     style GitHub fill:#24292e,color:#fff
     style CheapLLM fill:#4285f4,color:#fff
-    style StrongLLM fill:#4285f4,color:#fff
+    style SecondOpinionLLM fill:#4285f4,color:#fff
     style K8sAPI fill:#326ce5,color:#fff
     style Vault fill:#ffecb3
     
@@ -159,7 +159,7 @@ graph TB
     
     class StablePods stable
     class CanaryPods canary
-    class GitHub,CheapLLM,StrongLLM,DecisionModel external
+    class GitHub,CheapLLM,SecondOpinionLLM,DecisionModel external
 ```
 
 ## Analysis pipeline detail
@@ -171,8 +171,8 @@ flowchart LR
     Req[POST /analyze] --> Data[Parallel data agents<br/>non-AI: rollout status,<br/>metrics, log diagnostics]
     Data --> Combine[Combine into<br/>diagnostic data]
     Combine --> T1[Analysis LLM<br/>cheap tier]
-    T1 --> Grade{Jev decision model:<br/>conclusion supported?}
-    Grade -->|clearly disputed| T2[Analysis LLM<br/>strong tier]
+    T1 --> Grade{Decision model:<br/>conclusion supported?}
+    Grade -->|clearly disputed| T2[Analysis LLM<br/>second opinion tier]
     T2 --> Grade2{Re-grade}
     Grade -->|supported / neutral| Decide
     Grade2 -->|supported / neutral| Decide
