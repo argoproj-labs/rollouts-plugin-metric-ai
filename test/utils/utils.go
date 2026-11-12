@@ -28,11 +28,13 @@ import (
 )
 
 const (
-	// prometheusOperatorVersion = "v0.77.1"
-	// prometheusOperatorURL     = "https://github.com/prometheus-operator/prometheus-operator/" +
-	// 	"releases/download/%s/bundle.yaml"
-
-	ArgoRolloutsNamespace = "argo-rollouts"
+	ArgoRolloutsNamespace           = "argo-rollouts"
+	argoRolloutsManagerVersion      = "v0.0.8"
+	argoRolloutsManagerSystemNS     = "argo-rollouts-manager-system"
+	argoRolloutsManagerDeployment   = "argo-rollouts-manager-controller-manager"
+	argoRolloutsManagerKustomizeURL = "github.com/argoproj-labs/argo-rollouts-manager//config/default?ref=" + argoRolloutsManagerVersion
+	pluginBinaryPath                = "bin/rollouts-plugin-metric-ai"
+	pluginServerName                = "plugin-server"
 )
 
 func warnError(err error) {
@@ -103,77 +105,154 @@ func Run(cmd *exec.Cmd) (string, error) {
 // 	return false
 // }
 
-// UninstallArgoRollouts uninstalls the cert manager
 func UninstallArgoRollouts() {
-	cmd := exec.Command("kubectl", "delete", "-k", "config/argo-rollouts")
-	if _, err := Run(cmd); err != nil {
-		warnError(err)
+	for _, args := range [][]string{
+		{"kubectl", "delete", "rolloutmanager", "argo-rollouts", "-n", ArgoRolloutsNamespace, "--ignore-not-found"},
+		{"kubectl", "delete", "pod", pluginServerName, "-n", ArgoRolloutsNamespace, "--ignore-not-found"},
+		{"kubectl", "delete", "service", pluginServerName, "-n", ArgoRolloutsNamespace, "--ignore-not-found"},
+		{"kubectl", "delete", "-k", argoRolloutsManagerKustomizeURL, "--ignore-not-found"},
+		{"kubectl", "delete", "-f", "config/rolloutmanager/rbac-extra.yaml", "--ignore-not-found"},
+	} {
+		if _, err := Run(exec.Command(args[0], args[1:]...)); err != nil {
+			warnError(err)
+		}
 	}
 }
 
-// InstallArgoRollouts installs the cert manager bundle.
 func InstallArgoRollouts() error {
+	// create namespace (idempotent)
 	cmd := exec.Command("kubectl", "create", "namespace", ArgoRolloutsNamespace)
 	if _, err := Run(cmd); err != nil {
-		if strings.Contains(err.Error(), "AlreadyExists") {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Namespace %s already exists. Skipping creation...\n", "argo-rollouts")
-		} else {
+		if !strings.Contains(err.Error(), "AlreadyExists") {
 			return err
 		}
 	}
 
-	cmd = exec.Command("kubectl", "apply", "-n", ArgoRolloutsNamespace, "-k", "config/argo-rollouts")
-	// if _, err := Run(cmd); err != nil {
-	// 	return err
-	// }
+	// install operator via kustomize remote URL
+	cmd = exec.Command("kubectl", "apply", "-k", argoRolloutsManagerKustomizeURL)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
 
-	// install the rollouts examples
-	// cmd = exec.Command("kubectl", "apply", "-n", ArgoRolloutsNamespace, "-k", "config/rollouts-examples")
-	// if _, err := Run(cmd); err != nil {
-	// 	return err
-	// }
-	// Wait for cert-manager-webhook to be ready, which can take time if cert-manager
-	// was re-installed after uninstalling on a cluster.
-	// cmd = exec.Command("kubectl", "wait", "deployment.apps/cert-manager-webhook",
-	// 	"--for", "condition=Available",
-	// 	"--namespace", "cert-manager",
-	// 	"--timeout", "5m",
-	// )
+	// wait for operator deployment (installs into argo-rollouts-manager-system namespace)
+	cmd = exec.Command("kubectl", "wait", fmt.Sprintf("deployment/%s", argoRolloutsManagerDeployment),
+		"--for", "condition=Available",
+		"--namespace", argoRolloutsManagerSystemNS,
+		"--timeout", "3m",
+	)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
 
-	// configure the plugins
-	// cmd = exec.Command("kubectl", "apply", "-n", ArgoRolloutsNamespace, "-f", "./config/argorollouts/argo-rollouts-config.yaml")
+	// apply extra RBAC for pod logs
+	cmd = exec.Command("kubectl", "apply", "-f", "config/rolloutmanager/rbac-extra.yaml")
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
 
+	// build plugin binary
+	cmd = exec.Command("go", "build", "-o", pluginBinaryPath, ".")
+	if _, err := Run(cmd); err != nil {
+		return fmt.Errorf("building plugin binary: %w", err)
+	}
+
+	// start HTTP server pod to serve the binary
+	cmd = exec.Command("kubectl", "run", pluginServerName,
+		"--image=python:alpine",
+		"--namespace", ArgoRolloutsNamespace,
+		"--", "python3", "-m", "http.server", "8080", "--directory", "/data",
+	)
+	if _, err := Run(cmd); err != nil {
+		if !strings.Contains(err.Error(), "AlreadyExists") {
+			return err
+		}
+	}
+
+	// wait for plugin server pod to be ready
+	cmd = exec.Command("kubectl", "wait", fmt.Sprintf("pod/%s", pluginServerName),
+		"--for", "condition=Ready",
+		"--namespace", ArgoRolloutsNamespace,
+		"--timeout", "3m",
+	)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	// ensure /data directory exists in pod
+	cmd = exec.Command("kubectl", "exec", "-n", ArgoRolloutsNamespace, pluginServerName,
+		"--", "mkdir", "-p", "/data",
+	)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	// copy binary into the pod
+	cmd = exec.Command("kubectl", "cp",
+		pluginBinaryPath,
+		fmt.Sprintf("%s/%s:/data/rollouts-plugin-metric-ai", ArgoRolloutsNamespace, pluginServerName),
+	)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	// expose pod as a ClusterIP service
+	cmd = exec.Command("kubectl", "expose", "pod", pluginServerName,
+		"--port=80", "--target-port=8080",
+		"--namespace", ArgoRolloutsNamespace,
+	)
+	if _, err := Run(cmd); err != nil {
+		if !strings.Contains(err.Error(), "AlreadyExists") {
+			return err
+		}
+	}
+
+	// apply RolloutManager CR
+	cmd = exec.Command("kubectl", "apply", "-f", "config/rolloutmanager/rolloutmanager.yaml")
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	// apply secret (best-effort — may not exist in all environments)
+	cmd = exec.Command("kubectl", "apply", "-n", ArgoRolloutsNamespace, "-f", "config/argo-rollouts/secret.yaml")
+	if _, err := Run(cmd); err != nil {
+		warnError(err)
+	}
+
+	// wait for argo-rollouts deployment provisioned by the operator
+	cmd = exec.Command("kubectl", "wait", "deployment/argo-rollouts",
+		"--for", "condition=Available",
+		"--namespace", ArgoRolloutsNamespace,
+		"--timeout", "5m",
+	)
 	_, err := Run(cmd)
 	return err
 }
 
-// IsArgoRolloutsCRDsInstalled checks if any Argo Rollouts CRDs are installed
-// by verifying the existence of key CRDs related to Cert Manager.
 func IsArgoRolloutsCRDsInstalled() bool {
-	// List of common Argo Rollouts CRDs
-	argoRolloutsCRDs := []string{
+	// All of these must be present for the suite to skip installation.
+	requiredCRDs := []string{
 		"rollouts.argoproj.io",
 		"analysisruns.argoproj.io",
 	}
-
-	// Execute the kubectl command to get all CRDs
 	cmd := exec.Command("kubectl", "get", "crds")
 	output, err := Run(cmd)
 	if err != nil {
 		return false
 	}
-
-	// Check if any of the Cert Manager CRDs are present
 	crdList := GetNonEmptyLines(output)
-	for _, crd := range argoRolloutsCRDs {
+	for _, crd := range requiredCRDs {
+		found := false
 		for _, line := range crdList {
 			if strings.Contains(line, crd) {
-				return true
+				found = true
+				break
 			}
 		}
+		if !found {
+			return false
+		}
 	}
-
-	return false
+	return true
 }
 
 // LoadImageToKindClusterWithName loads a local docker image to the kind cluster
@@ -276,17 +355,3 @@ func UncommentCode(filename, target, prefix string) error {
 	return nil
 }
 
-// RestartArgoRollouts restarts the Argo Rollouts controller deployment
-func RestartArgoRollouts() error {
-	By("restarting Argo Rollouts controller")
-	cmd := exec.Command("kubectl", "rollout", "restart", "deployment/argo-rollouts", "-n", ArgoRolloutsNamespace)
-	_, err := Run(cmd)
-	if err != nil {
-		return err
-	}
-
-	By("waiting for Argo Rollouts rollout to complete")
-	cmd = exec.Command("kubectl", "rollout", "status", "deployment/argo-rollouts", "-n", ArgoRolloutsNamespace, "--timeout=5m")
-	_, err = Run(cmd)
-	return err
-}
