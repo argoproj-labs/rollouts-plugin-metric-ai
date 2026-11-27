@@ -50,7 +50,10 @@ func Run(cmd *exec.Cmd) (string, error) {
 		_, _ = fmt.Fprintf(GinkgoWriter, "chdir dir: %q\n", err)
 	}
 
-	cmd.Env = append(os.Environ(), "GO111MODULE=on")
+	if len(cmd.Env) == 0 {
+		cmd.Env = os.Environ()
+	}
+	cmd.Env = append(cmd.Env, "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
 	_, _ = fmt.Fprintf(GinkgoWriter, "running: %q\n", command)
 	output, err := cmd.CombinedOutput()
@@ -150,8 +153,9 @@ func InstallArgoRollouts() error {
 		return err
 	}
 
-	// build plugin binary
+	// build plugin binary for Linux container environment
 	cmd = exec.Command("go", "build", "-o", pluginBinaryPath, ".")
+	cmd.Env = append(os.Environ(), "GOOS=linux", "CGO_ENABLED=0")
 	if _, err := Run(cmd); err != nil {
 		return fmt.Errorf("building plugin binary: %w", err)
 	}
@@ -210,12 +214,6 @@ func InstallArgoRollouts() error {
 	cmd = exec.Command("kubectl", "apply", "-f", "config/rolloutmanager/rolloutmanager.yaml")
 	if _, err := Run(cmd); err != nil {
 		return err
-	}
-
-	// apply secret (best-effort — may not exist in all environments)
-	cmd = exec.Command("kubectl", "apply", "-n", ArgoRolloutsNamespace, "-f", "config/argo-rollouts/secret.yaml")
-	if _, err := Run(cmd); err != nil {
-		warnError(err)
 	}
 
 	// wait for argo-rollouts deployment provisioned by the operator
@@ -354,4 +352,3 @@ func UncommentCode(filename, target, prefix string) error {
 
 	return nil
 }
-
