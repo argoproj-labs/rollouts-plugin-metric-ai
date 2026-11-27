@@ -115,6 +115,7 @@ func UninstallArgoRollouts() {
 		{"kubectl", "delete", "pod", pluginServerName, "-n", ArgoRolloutsNamespace, "--ignore-not-found"},
 		{"kubectl", "delete", "service", pluginServerName, "-n", ArgoRolloutsNamespace, "--ignore-not-found"},
 		{"kubectl", "delete", "-k", argoRolloutsManagerKustomize, "--ignore-not-found"},
+		{"kubectl", "delete", "namespace", ArgoRolloutsNamespace, "--ignore-not-found"},
 	} {
 		if _, err := Run(exec.Command(args[0], args[1:]...)); err != nil {
 			warnError(err)
@@ -177,6 +178,8 @@ spec:
     runAsNonRoot: true
     runAsUser: 65534
     runAsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: %s
       image: %s
@@ -185,6 +188,7 @@ spec:
         - containerPort: 8080
       securityContext:
         allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
         capabilities:
           drop: ["ALL"]
       volumeMounts:

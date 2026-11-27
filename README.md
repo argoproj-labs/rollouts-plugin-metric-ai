@@ -281,7 +281,7 @@ spec:
           value: "debug"
 ```
 
-RolloutManager: See [examples/rolloutmanager.yaml](examples/rolloutmanager.yaml) for configuring `env` and `extraCommandArgs` on the controller.
+RolloutManager: See [config/rolloutmanager/rolloutmanager.yaml](config/rolloutmanager/rolloutmanager.yaml) for configuring `env` and `extraCommandArgs` on the controller.
 
 ### Viewing Logs
 

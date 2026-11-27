@@ -20,7 +20,7 @@ internal/plugin/
   ai_mode.go                     # analyzeWithKubernetesAgent() — wires plugin.go to agent.go
   ai.go                          # AIAnalysisResult
   utils.go                       # isTruthy(), truncate()
-config/rolloutmanager/            # RolloutManager kustomization and E2E CR for deploying Argo Rollouts with the plugin
+config/rolloutmanager/           # RolloutManager kustomization and E2E CR for deploying Argo Rollouts with the plugin
                                  # Note: the plugin itself carries no credentials — all AI keys
                                  # live in the kubernetes-agent pod, not in the controller
 config/rollouts-examples/        # Example Rollout and AnalysisTemplate resources
@@ -50,21 +50,15 @@ kubectl logs -f deployment/argo-rollouts -n argo-rollouts
 
 ## Cluster Deployment (Production / OpenShift)
 
-The plugin ships as a binary inside the Argo Rollouts controller image. To deploy a new version:
+With `RolloutManager` (recommended), update `spec.plugins.metric[].location` in your `RolloutManager` CR to the new release binary URL (see `examples/rolloutmanager.yaml`), apply the manifest, and restart the controller:
 
 ```bash
-# Build and push the image
-make docker-buildx
-
-# Update the plugin location/tag in your RolloutManager CR (see examples/rolloutmanager.yaml), commit, and push
-
-# Restart the controller so it picks up the new binary
+kubectl apply -f <your-rolloutmanager.yaml>
 kubectl rollout restart deployment/argo-rollouts -n argo-rollouts
 kubectl rollout status deployment/argo-rollouts -n argo-rollouts
-
-# Verify the plugin binary is present in the controller
-kubectl exec -n argo-rollouts deployment/argo-rollouts -- ls -la /home/argo-rollouts/rollouts-plugin-metric-ai
 ```
+
+If instead you bake the plugin binary into a custom controller image using the `Dockerfile`, build and push with `make docker-buildx`, update the controller image, and restart the controller; the binary is located at `/home/argo-rollouts/rollouts-plugin-metric-ai`.
 
 ## Plugin Interface
 
