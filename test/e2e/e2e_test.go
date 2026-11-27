@@ -68,15 +68,15 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
-		By("deleting the canary-demo rollout")
-		cmd = exec.Command("kubectl", "delete", "rollout", rolloutName, "-n", namespace)
+		By("deleting the canary-demo rollout if it exists")
+		cmd = exec.Command("kubectl", "delete", "rollout", rolloutName, "-n", namespace, "--ignore-not-found")
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to delete the canary-demo rollout")
 
-		By("deploying the image and creating canary-demo rollout")
-		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
+		By("deploying rollout examples")
+		cmd = exec.Command("make", "deploy")
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the image")
+		Expect(err).NotTo(HaveOccurred(), "Failed to deploy rollout examples")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,

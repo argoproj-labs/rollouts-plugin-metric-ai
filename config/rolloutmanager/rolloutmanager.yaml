@@ -1,0 +1,11 @@
+apiVersion: argoproj.io/v1alpha1
+kind: RolloutManager
+metadata:
+  name: argo-rollouts
+  namespace: argo-rollouts
+spec:
+  namespaceScoped: true
+  plugins:
+    metric:
+      - name: argoproj-labs/metric-ai
+        location: http://plugin-server.argo-rollouts.svc.cluster.local/rollouts-plugin-metric-ai
