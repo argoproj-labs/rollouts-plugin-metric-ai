@@ -55,8 +55,8 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	// if !skipArgoRolloutsInstall && !isArgoRolloutsAlreadyInstalled {
-	// 	_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling Argo Rollouts...\n")
-	// 	utils.UninstallArgoRollouts()
-	// }
+	if !skipArgoRolloutsInstall && !isArgoRolloutsAlreadyInstalled {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling Argo Rollouts...\n")
+		utils.UninstallArgoRollouts()
+	}
 })

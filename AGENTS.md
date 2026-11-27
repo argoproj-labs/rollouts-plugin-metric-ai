@@ -20,7 +20,7 @@ internal/plugin/
   ai_mode.go                     # analyzeWithKubernetesAgent() — wires plugin.go to agent.go
   ai.go                          # AIAnalysisResult
   utils.go                       # isTruthy(), truncate()
-config/argo-rollouts/            # Kustomize overlay for deploying Argo Rollouts with plugin
+config/rolloutmanager/            # RolloutManager kustomization and E2E CR for deploying Argo Rollouts with the plugin
                                  # Note: the plugin itself carries no credentials — all AI keys
                                  # live in the kubernetes-agent pod, not in the controller
 config/rollouts-examples/        # Example Rollout and AnalysisTemplate resources
@@ -56,7 +56,7 @@ The plugin ships as a binary inside the Argo Rollouts controller image. To deplo
 # Build and push the image
 make docker-buildx
 
-# Update the image tag in config/argo-rollouts/kustomization.yaml, commit, and push
+# Update the plugin location/tag in your RolloutManager CR (see examples/rolloutmanager.yaml), commit, and push
 
 # Restart the controller so it picks up the new binary
 kubectl rollout restart deployment/argo-rollouts -n argo-rollouts
@@ -119,7 +119,7 @@ to the agent; no token is needed in the controller.
 
 | Symptom | Check |
 |---|---|
-| Plugin binary not found | Verify image tag in `config/argo-rollouts/kustomization.yaml` and that the controller restarted |
+| Plugin binary not found | Verify the plugin URL/version in your `RolloutManager` CR and that the controller restarted |
 | Analysis always fails | `kubectl logs` on controller; verify `agentUrl` resolves and agent is healthy |
 | 429 errors | Rate limit on the agent/LLM side; check agent logs |
 | Architecture mismatch on Kind | Rebuild with `make docker-build PLATFORMS=linux/arm64` or `linux/amd64` to match cluster |

@@ -5,6 +5,12 @@ metadata:
   namespace: argo-rollouts
 spec:
   namespaceScoped: true
+  env:
+    - name: LOG_LEVEL
+      value: debug
+  extraCommandArgs:
+    - --loglevel
+    - debug
   plugins:
     metric:
       - name: argoproj-labs/metric-ai

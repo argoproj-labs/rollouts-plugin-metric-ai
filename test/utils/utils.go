@@ -22,19 +22,20 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2" // nolint:revive,staticcheck
 )
 
 const (
-	ArgoRolloutsNamespace           = "argo-rollouts"
-	argoRolloutsManagerVersion      = "v0.0.8"
-	argoRolloutsManagerSystemNS     = "argo-rollouts-manager-system"
-	argoRolloutsManagerDeployment   = "argo-rollouts-manager-controller-manager"
-	argoRolloutsManagerKustomizeURL = "github.com/argoproj-labs/argo-rollouts-manager//config/default?ref=" + argoRolloutsManagerVersion
-	pluginBinaryPath                = "bin/rollouts-plugin-metric-ai"
-	pluginServerName                = "plugin-server"
+	ArgoRolloutsNamespace         = "argo-rollouts"
+	argoRolloutsManagerKustomize  = "config/rolloutmanager"
+	argoRolloutsManagerSystemNS   = "argo-rollouts-manager-system"
+	argoRolloutsManagerDeployment = "argo-rollouts-manager-controller-manager"
+	pluginBinaryPath              = "bin/rollouts-plugin-metric-ai"
+	pluginServerName              = "plugin-server"
+	pluginServerImage             = "python:3.13-alpine"
 )
 
 func warnError(err error) {
@@ -113,13 +114,22 @@ func UninstallArgoRollouts() {
 		{"kubectl", "delete", "rolloutmanager", "argo-rollouts", "-n", ArgoRolloutsNamespace, "--ignore-not-found"},
 		{"kubectl", "delete", "pod", pluginServerName, "-n", ArgoRolloutsNamespace, "--ignore-not-found"},
 		{"kubectl", "delete", "service", pluginServerName, "-n", ArgoRolloutsNamespace, "--ignore-not-found"},
-		{"kubectl", "delete", "-k", argoRolloutsManagerKustomizeURL, "--ignore-not-found"},
-		{"kubectl", "delete", "-f", "config/rolloutmanager/rbac-extra.yaml", "--ignore-not-found"},
+		{"kubectl", "delete", "-k", argoRolloutsManagerKustomize, "--ignore-not-found"},
 	} {
 		if _, err := Run(exec.Command(args[0], args[1:]...)); err != nil {
 			warnError(err)
 		}
 	}
+}
+
+func targetNodeArch() string {
+	cmd := exec.Command("kubectl", "get", "nodes", "-o", "jsonpath={.items[0].status.nodeInfo.architecture}")
+	if out, err := Run(cmd); err == nil {
+		if arch := strings.TrimSpace(out); arch != "" {
+			return arch
+		}
+	}
+	return runtime.GOARCH
 }
 
 func InstallArgoRollouts() error {
@@ -131,8 +141,8 @@ func InstallArgoRollouts() error {
 		}
 	}
 
-	// install operator via kustomize remote URL
-	cmd = exec.Command("kubectl", "apply", "-k", argoRolloutsManagerKustomizeURL)
+	// install operator via local kustomization with pinned release image tag
+	cmd = exec.Command("kubectl", "apply", "-k", argoRolloutsManagerKustomize)
 	if _, err := Run(cmd); err != nil {
 		return err
 	}
@@ -147,29 +157,47 @@ func InstallArgoRollouts() error {
 		return err
 	}
 
-	// apply extra RBAC for pod logs
-	cmd = exec.Command("kubectl", "apply", "-f", "config/rolloutmanager/rbac-extra.yaml")
-	if _, err := Run(cmd); err != nil {
-		return err
-	}
-
-	// build plugin binary for Linux container environment
+	// build plugin binary for Linux container environment matching cluster node architecture
 	cmd = exec.Command("go", "build", "-o", pluginBinaryPath, ".")
-	cmd.Env = append(os.Environ(), "GOOS=linux", "CGO_ENABLED=0")
+	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+targetNodeArch(), "CGO_ENABLED=0")
 	if _, err := Run(cmd); err != nil {
 		return fmt.Errorf("building plugin binary: %w", err)
 	}
 
-	// start HTTP server pod to serve the binary
-	cmd = exec.Command("kubectl", "run", pluginServerName,
-		"--image=python:alpine",
-		"--namespace", ArgoRolloutsNamespace,
-		"--", "python3", "-m", "http.server", "8080", "--directory", "/data",
-	)
+	// start non-root HTTP server pod to serve the binary
+	podManifest := fmt.Sprintf(`apiVersion: v1
+kind: Pod
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    run: %s
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+  containers:
+    - name: %s
+      image: %s
+      command: ["sh", "-c", "mkdir -p /data && exec python3 -m http.server 8080 --directory /data"]
+      ports:
+        - containerPort: 8080
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      emptyDir: {}
+`, pluginServerName, ArgoRolloutsNamespace, pluginServerName, pluginServerName, pluginServerImage)
+	cmd = exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(podManifest)
 	if _, err := Run(cmd); err != nil {
-		if !strings.Contains(err.Error(), "AlreadyExists") {
-			return err
-		}
+		return err
 	}
 
 	// wait for plugin server pod to be ready
@@ -177,14 +205,6 @@ func InstallArgoRollouts() error {
 		"--for", "condition=Ready",
 		"--namespace", ArgoRolloutsNamespace,
 		"--timeout", "3m",
-	)
-	if _, err := Run(cmd); err != nil {
-		return err
-	}
-
-	// ensure /data directory exists in pod
-	cmd = exec.Command("kubectl", "exec", "-n", ArgoRolloutsNamespace, pluginServerName,
-		"--", "mkdir", "-p", "/data",
 	)
 	if _, err := Run(cmd); err != nil {
 		return err
@@ -216,6 +236,16 @@ func InstallArgoRollouts() error {
 		return err
 	}
 
+	// wait for RolloutManager CR to report Available phase
+	cmd = exec.Command("kubectl", "wait", "rolloutmanager/argo-rollouts",
+		"--for=jsonpath={.status.phase}=Available",
+		"--namespace", ArgoRolloutsNamespace,
+		"--timeout", "3m",
+	)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
 	// wait for argo-rollouts deployment provisioned by the operator
 	cmd = exec.Command("kubectl", "wait", "deployment/argo-rollouts",
 		"--for", "condition=Available",
@@ -232,49 +262,13 @@ func IsArgoRolloutsCRDsInstalled() bool {
 		"rollouts.argoproj.io",
 		"analysisruns.argoproj.io",
 	}
-	cmd := exec.Command("kubectl", "get", "crds")
-	output, err := Run(cmd)
-	if err != nil {
-		return false
-	}
-	crdList := GetNonEmptyLines(output)
 	for _, crd := range requiredCRDs {
-		found := false
-		for _, line := range crdList {
-			if strings.Contains(line, crd) {
-				found = true
-				break
-			}
-		}
-		if !found {
+		cmd := exec.Command("kubectl", "get", "crd", crd)
+		if _, err := Run(cmd); err != nil {
 			return false
 		}
 	}
 	return true
-}
-
-// LoadImageToKindClusterWithName loads a local docker image to the kind cluster
-func LoadImageToKindClusterWithName(name string) error {
-	cluster := "kind"
-	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
-		cluster = v
-	} else {
-		// if cluster exists, use it, otherwise use the default "kind"
-		default_cluster := "rollouts-plugin-metric-ai-test-e2e"
-		if clusters, err := exec.Command("kind", "get", "clusters").Output(); err == nil {
-			clusters := strings.Split(string(clusters), "\n")
-			for _, c := range clusters {
-				if c == default_cluster {
-					cluster = default_cluster
-					break
-				}
-			}
-		}
-	}
-	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
-	cmd := exec.Command("kind", kindOptions...)
-	_, err := Run(cmd)
-	return err
 }
 
 // GetNonEmptyLines converts given command output string into individual objects

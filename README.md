@@ -281,7 +281,7 @@ spec:
           value: "debug"
 ```
 
-Kustomize: Already configured in `config/argo-rollouts/kustomization.yaml`
+RolloutManager: See [examples/rolloutmanager.yaml](examples/rolloutmanager.yaml) for configuring `env` and `extraCommandArgs` on the controller.
 
 ### Viewing Logs
 
